@@ -15,6 +15,7 @@
 #define preference_mqtt_password (char*)"mqttpass"
 #define preference_mqtt_log_enabled (char*)"mqttlog"
 #define preference_webserver_enabled (char*)"websrvena"
+#define preference_update_time (char*)"updateTime"
 #define preference_lock_enabled (char*)"lockena"
 #define preference_lock_pin_status (char*)"lockpin"
 #define preference_mqtt_lock_path (char*)"mqttpath"
@@ -237,7 +238,7 @@ private:
             preference_mqtt_broker, preference_mqtt_broker_port, preference_mqtt_user, preference_mqtt_password, preference_mqtt_log_enabled, preference_check_updates,
             preference_webserver_enabled, preference_lock_enabled, preference_lock_pin_status, preference_mqtt_lock_path, preference_opener_enabled, preference_opener_pin_status,
             preference_opener_continuous_mode, preference_mqtt_opener_path, preference_lock_max_keypad_code_count, preference_opener_max_keypad_code_count,
-            preference_lock_max_timecontrol_entry_count, preference_opener_max_timecontrol_entry_count, preference_enable_bootloop_reset, preference_mqtt_ca, preference_mqtt_crt,
+            preference_update_time, preference_lock_max_timecontrol_entry_count, preference_opener_max_timecontrol_entry_count, preference_enable_bootloop_reset, preference_mqtt_ca, preference_mqtt_crt,
             preference_mqtt_key, preference_mqtt_hass_discovery, preference_mqtt_hass_cu_url, preference_buffer_size, preference_ip_dhcp_enabled, preference_ip_address,
             preference_ip_subnet, preference_ip_gateway, preference_ip_dns_server, preference_network_hardware, preference_network_wifi_fallback_disabled,
             preference_rssi_publish_interval, preference_hostname, preference_find_best_rssi, preference_network_timeout, preference_restart_on_disconnect,
@@ -262,7 +263,8 @@ private:
             preference_restart_on_disconnect, preference_keypad_control_enabled, preference_keypad_info_enabled, preference_keypad_publish_code, preference_show_secrets,
             preference_timecontrol_control_enabled, preference_timecontrol_info_enabled, preference_register_as_app, preference_register_opener_as_app, preference_ip_dhcp_enabled,
             preference_publish_authdata, preference_has_mac_saved, preference_publish_debug_info, preference_network_wifi_fallback_disabled, preference_official_hybrid,
-            preference_official_hybrid_actions, preference_official_hybrid_retry, preference_conf_info_enabled, preference_disable_non_json, preference_update_from_mqtt
+            preference_official_hybrid_actions, preference_official_hybrid_retry, preference_conf_info_enabled, preference_disable_non_json, preference_update_from_mqtt,
+            preference_update_time
     };
     std::vector<char*> _bytePrefs =
     {

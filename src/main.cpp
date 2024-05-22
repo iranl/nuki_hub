@@ -22,6 +22,8 @@
 #include "Logger.h"
 #include "PreferencesKeys.h"
 #include "RestartReason.h"
+#include <time.h>
+#include "esp_sntp.h"
 
 NukiNetworkLock* networkLock = nullptr;
 NukiNetworkOpener* networkOpener = nullptr;
@@ -74,7 +76,7 @@ TaskHandle_t networkTaskHandle = nullptr;
 void networkTask(void *pvParameters)
 {
     int64_t networkLoopTs = 0;
-    
+
     while(true)
     {
         int64_t ts = (esp_timer_get_time() / 1000);
@@ -99,13 +101,13 @@ void networkTask(void *pvParameters)
         #else
         webCfgServer->update();
         #endif
-        
+
         if((esp_timer_get_time() / 1000) - networkLoopTs > 120000)
         {
             Log->println("networkTask is running");
             networkLoopTs = esp_timer_get_time() / 1000;
         }
-        
+
         esp_task_wdt_reset();
 
         delay(100);
@@ -116,7 +118,7 @@ void networkTask(void *pvParameters)
 void nukiTask(void *pvParameters)
 {
     int64_t nukiLoopTs = 0;
-    
+
     while(true)
     {
         bleScanner->update();
@@ -137,13 +139,13 @@ void nukiTask(void *pvParameters)
         {
             nukiOpener->update();
         }
-        
+
         if((esp_timer_get_time() / 1000) - nukiLoopTs > 120000)
         {
             Log->println("nukiTask is running");
             nukiLoopTs = esp_timer_get_time() / 1000;
         }
-        
+
         esp_task_wdt_reset();
     }
 }
@@ -274,7 +276,7 @@ void otaTask(void *pvParameter)
     while (1) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
-    
+
     esp_task_wdt_reset();
 }
 #endif
@@ -282,7 +284,7 @@ void otaTask(void *pvParameter)
 void setupTasks(bool ota)
 {
     // configMAX_PRIORITIES is 25
-    
+
     #if (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0))
     esp_task_wdt_init(300, true);
     #else
@@ -337,6 +339,10 @@ void initEthServer(const NetworkDeviceType device)
 
 
 
+void cbSyncTime(struct timeval *tv)  {
+  Serial.println(F("NTP time synched"));
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -349,7 +355,7 @@ void setup()
     uint8_t partitionType = checkPartition();
 
     initializeRestartReason();
-    
+
     #ifndef NUKI_HUB_UPDATER
     if(preferences->getBool(preference_enable_bootloop_reset, false))
     {
@@ -434,6 +440,13 @@ void setup()
     {
         nukiOpener = new NukiOpenerWrapper("NukiHub", deviceIdOpener, bleScanner, networkOpener, gpio, preferences);
         nukiOpener->initialize();
+    }
+
+    if(preferences->getBool(preference_update_time))
+    {
+        sntp_set_sync_interval(12 * 60 * 60 * 1000UL);
+        sntp_set_time_sync_notification_cb(cbSyncTime);
+        configTime(0, 0, "pool.ntp.org");
     }
 
     if(preferences->getBool(preference_webserver_enabled, true))

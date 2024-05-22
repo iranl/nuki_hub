@@ -951,6 +951,11 @@ bool WebCfgServer::processArgs(String& message)
             _preferences->putString(preference_mqtt_key, value);
             configChanged = true;
         }
+        else if(key == "UPTIME")
+        {
+            _preferences->putBool(preference_update_time, (value == "1"));
+            configChanged = true;
+        }
         else if(key == "NWHW")
         {
             _preferences->putInt(preference_network_hardware, value.toInt());
@@ -2156,6 +2161,7 @@ void WebCfgServer::buildMqttConfigHtml(String &response)
     printCheckBox(response, "MQTTLOG", "Enable MQTT logging", _preferences->getBool(preference_mqtt_log_enabled), "");
     printCheckBox(response, "CHECKUPDATE", "Check for Firmware Updates every 24h", _preferences->getBool(preference_check_updates), "");
     printCheckBox(response, "UPDATEMQTT", "Allow updating using MQTT", _preferences->getBool(preference_update_from_mqtt), "");
+    printCheckBox(response, "UPTIME", "Update Nuki Hub and Lock/Opener time using NTP", _preferences->getBool(preference_update_time), "");
     printCheckBox(response, "DISNONJSON", "Disable some extraneous non-JSON topics", _preferences->getBool(preference_disable_non_json), "");
     printCheckBox(response, "OFFHYBRID", "Enable hybrid official MQTT and Nuki Hub setup", _preferences->getBool(preference_official_hybrid), "");
     printCheckBox(response, "HYBRIDACT", "Enable sending actions through official MQTT", _preferences->getBool(preference_official_hybrid_actions), "");
