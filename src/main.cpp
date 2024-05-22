@@ -14,6 +14,8 @@
 #include "RestartReason.h"
 #include "CharBuffer.h"
 #include "NukiDeviceId.h"
+#include <time.h>
+#include "esp_sntp.h"
 
 Network* network = nullptr;
 NetworkLock* networkLock = nullptr;
@@ -246,6 +248,10 @@ bool initPreferences()
     return firstStart;
 }
 
+void cbSyncTime(struct timeval *tv)  {
+  Serial.println(F("NTP time synched"));
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -256,7 +262,6 @@ void setup()
     bool firstStart = initPreferences();
 
     initializeRestartReason();
-
 
     uint32_t devIdOpener = preferences->getUInt(preference_device_id_opener);
 
@@ -315,7 +320,14 @@ void setup()
         nukiOpener = new NukiOpenerWrapper("NukiHub", deviceIdOpener, bleScanner, networkOpener, gpio, preferences);
         nukiOpener->initialize();
     }
-
+    
+    if(preferences->getBool(preference_update_time))
+    {
+        sntp_set_sync_interval(12 * 60 * 60 * 1000UL);
+        sntp_set_time_sync_notification_cb(cbSyncTime);
+        configTime(0, 0, "pool.ntp.org");
+    }
+    
     webCfgServer = new WebCfgServer(nuki, nukiOpener, network, gpio, ethServer, preferences, network->networkDeviceType() == NetworkDeviceType::WiFi);
     webCfgServer->initialize();
 

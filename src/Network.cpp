@@ -2274,7 +2274,7 @@ void Network::publishHASSConfigAdditionalOpenerEntities(char *deviceType, const 
                      "",
                      {{(char*)"pl_on", (char*)"ring"},
                       {(char*)"pl_off", (char*)"standby"}});
-  
+
     JsonDocument json;
     json = createHassJson(uidString, "_ring_event", "Ring", name, baseTopic, String("~") + mqtt_topic_lock_ring, deviceType, "doorbell", "", "", "", {{(char*)"val_tpl", (char*)"{ \"event_type\": \"{{ value }}\" }"}});
     json["event_types"][0] = "ring";

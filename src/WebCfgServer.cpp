@@ -333,6 +333,11 @@ bool WebCfgServer::processArgs(String& message)
             _preferences->putString(preference_mqtt_key, value);
             configChanged = true;
         }
+        else if(key == "UPTIME")
+        {
+            _preferences->putBool(preference_update_time, (value == "1"));
+            configChanged = true;
+        }
         else if(key == "NWHW")
         {
             _preferences->putInt(preference_network_hardware, value.toInt());
@@ -902,6 +907,7 @@ bool WebCfgServer::processArgs(String& message)
                 message = "Nuki Lock PIN saved";
                 _nuki->setPin(value.toInt());
             }
+            configChanged = true;
         }
         else if(key == "NUKIOPPIN" && _nukiOpener != nullptr)
         {
@@ -915,6 +921,7 @@ bool WebCfgServer::processArgs(String& message)
                 message = "Nuki Opener PIN saved";
                 _nukiOpener->setPin(value.toInt());
             }
+            configChanged = true;
         }
     }
 
@@ -1246,6 +1253,7 @@ void WebCfgServer::buildMqttConfigHtml(String &response)
     printCheckBox(response, "RSTDISC", "Restart on disconnect", _preferences->getBool(preference_restart_on_disconnect), "");
     printCheckBox(response, "MQTTLOG", "Enable MQTT logging", _preferences->getBool(preference_mqtt_log_enabled), "");
     printCheckBox(response, "CHECKUPDATE", "Check for Firmware Updates every 24h", _preferences->getBool(preference_check_updates), "");
+    printCheckBox(response, "UPTIME", "Update Nuki Hub and Lock/Opener time using NTP", _preferences->getBool(preference_update_time), "");
     response.concat("</table>");
     response.concat("* If no encryption is configured for the MQTT broker, leave empty. Only supported for Wi-Fi connections.<br><br>");
 

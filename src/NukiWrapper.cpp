@@ -5,6 +5,8 @@
 #include "Logger.h"
 #include "RestartReason.h"
 #include <NukiLockUtils.h>
+#include <time.h>
+#include "esp_sntp.h"
 
 NukiWrapper* nukiInst;
 Preferences* nukiLockPreferences = nullptr;
@@ -18,6 +20,7 @@ NukiWrapper::NukiWrapper(const std::string& deviceName, NukiDeviceId* deviceId, 
   _gpio(gpio),
   _preferences(preferences)
 {
+
     Log->print("Device id lock: ");
     Log->println(_deviceId->get());
 
@@ -196,6 +199,11 @@ void NukiWrapper::update()
     {
         _nextTimeControlUpdateTs = 0;
         updateTimeControl(true);
+    }
+    if(_preferences->getBool(preference_update_time) && ts > (120 * 1000) && ts > _nextTimeUpdateTs)
+    {
+        _nextTimeUpdateTs = ts + (12 * 60 * 60 * 1000);
+        updateTime();
     }
     if(_hassEnabled && _configRead && _network->reconnected())
     {
@@ -1687,7 +1695,7 @@ void NukiWrapper::onKeypadJsonCommandReceived(const char *value)
                 entry.codeId = codeId;
                 size_t nameLen = strlen(name);
                 memcpy(&entry.name, name, nameLen > 20 ? 20 : nameLen);
-                
+
                 if(code) entry.code = code;
                 else
                 {
@@ -1798,7 +1806,7 @@ void NukiWrapper::onTimeControlCommandReceived(const char *value)
     const char *time = json["time"].as<const char*>();
     const char *lockAct = json["lockAction"].as<const char*>();
     NukiLock::LockAction timeControlLockAction;
-  
+
     if(lockAct)
     {
         timeControlLockAction = nukiInst->lockActionToEnum(lockAct);
@@ -2079,3 +2087,31 @@ void NukiWrapper::updateGpioOutputs()
     }
 }
 
+void NukiWrapper::updateTime()
+{
+    if(!isPinValid())
+    {
+        Log->println(F("No valid PIN set"));
+        return;
+    }
+    
+    time_t now;
+    tm tm;
+    time(&now);
+    localtime_r(&now, &tm);
+    Nuki::TimeValue nukiTime;
+    nukiTime.year = tm.tm_year + 1900;
+    nukiTime.month = tm.tm_mon + 1;
+    nukiTime.day = tm.tm_mday;
+    nukiTime.hour = tm.tm_hour;
+    nukiTime.minute = tm.tm_min;
+    nukiTime.second = tm.tm_sec;
+
+    Nuki::CmdResult cmdResult = _nukiLock.updateTime(nukiTime);
+
+    char resultStr[15] = {0};
+    NukiLock::cmdResultToString(cmdResult, resultStr);
+
+    Log->print(F("Time update result: "));
+    Log->println(resultStr);
+}
