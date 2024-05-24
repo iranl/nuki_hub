@@ -98,6 +98,7 @@
 #define preference_ota_updater_url (char*)"otaUpdUrl"
 #define preference_update_from_mqtt (char*)"updMqtt"
 #define preference_show_secrets (char*)"showSecr"
+#define preference_totp_secret (char*)"totpsecret"
 
 inline bool initPreferences(Preferences* preferences)
 {
@@ -249,12 +250,13 @@ private:
             preference_cred_password, preference_disable_non_json, preference_publish_authdata, preference_publish_debug_info, preference_presence_detection_timeout,
             preference_official_hybrid, preference_query_interval_hybrid_lockstate, preference_official_hybrid_actions, preference_official_hybrid_retry, preference_has_mac_saved,
             preference_has_mac_byte_0, preference_has_mac_byte_1, preference_has_mac_byte_2, preference_latest_version, preference_task_size_network, preference_task_size_nuki,
-            preference_authlog_max_entries, preference_keypad_max_entries, preference_timecontrol_max_entries, preference_update_from_mqtt, preference_show_secrets
+            preference_authlog_max_entries, preference_keypad_max_entries, preference_timecontrol_max_entries, preference_update_from_mqtt, preference_show_secrets,
+            preference_totp_secret
     };
     std::vector<char*> _redact =
     {
         preference_mqtt_user, preference_mqtt_password, preference_mqtt_ca, preference_mqtt_crt, preference_mqtt_key, preference_cred_user, preference_cred_password,
-        preference_nuki_id_lock, preference_nuki_id_opener,
+        preference_nuki_id_lock, preference_nuki_id_opener, preference_totp_secret
     };
     std::vector<char*> _boolPrefs =
     {

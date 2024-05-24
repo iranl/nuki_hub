@@ -1640,6 +1640,14 @@ bool WebCfgServer::processArgs(String& message)
         {
             pass2 = value;
         }
+        else if(key == "CREDTOTP")
+        {
+            if(value != "*")
+            {
+                _preferences->putString(preference_totp_secret, value);
+                configChanged = true;
+            }
+        }
         else if(key == "NUKIPIN" && _nuki != nullptr)
         {
             if(value == "#")
@@ -1652,6 +1660,7 @@ bool WebCfgServer::processArgs(String& message)
                 message = "Nuki Lock PIN saved";
                 _nuki->setPin(value.toInt());
             }
+            waitAndProcess(true, 1000);
             configChanged = true;
         }
         else if(key == "NUKIOPPIN" && _nukiOpener != nullptr)
@@ -1666,6 +1675,7 @@ bool WebCfgServer::processArgs(String& message)
                 message = "Nuki Opener PIN saved";
                 _nukiOpener->setPin(value.toInt());
             }
+            waitAndProcess(true, 1000);
             configChanged = true;
         }
         else if(key == "LCKMANPAIR" && (value == "1"))
@@ -1727,7 +1737,7 @@ bool WebCfgServer::processArgs(String& message)
         nukiBlePref.end();
     }
 
-    if(pass1 != "" && pass1 == pass2)
+    if(pass1 != "" && pass1 != "*" && pass1 == pass2)
     {
         _preferences->putString(preference_cred_password, pass1);
         configChanged = true;
@@ -2056,6 +2066,14 @@ void WebCfgServer::buildHtml(String& response)
 
 void WebCfgServer::buildCredHtml(String &response)
 {
+    char randomstr[17];
+    randomSeed(analogRead(0));
+    char chars[] = {'2', '3','4', '5', '6','7', 'A', 'B', 'C', 'D','E', 'F', 'G','H', 'I', 'J','K', 'L', 'M', 'N', 'O','P', 'Q','R', 'S', 'T','U', 'V', 'W','X', 'Y', 'Z'};
+    for(int i = 0;i < 16; i++){
+        randomstr[i] = chars[random(32)];
+    }
+    randomstr[16] = '\0';
+  
     buildHtmlHeader(response);
 
     response.concat("<form class=\"adapt\" method=\"post\" action=\"savecfg\">");
@@ -2064,6 +2082,10 @@ void WebCfgServer::buildCredHtml(String &response)
     printInputField(response, "CREDUSER", "User (# to clear)", _preferences->getString(preference_cred_user).c_str(), 30, "", false, true);
     printInputField(response, "CREDPASS", "Password", "*", 30, "", true, true);
     printInputField(response, "CREDPASSRE", "Retype password", "*", 30, "", true);
+    printInputField(response, "CREDTOTP", "TOTP Secret Key", "*", 16, "", true);
+    response.concat("<tr id=\"totpgentr\" ><td><input type=\"button\" id=\"totpgen\" onclick=\"document.getElementsByName('CREDTOTP')[0].type='text'; document.getElementsByName('CREDTOTP')[0].value='");
+    response.concat(randomstr);
+    response.concat("'; document.getElementById('totpgentr').style.display='none';\" value=\"Generate new TOTP key\"></td></tr>");
     response.concat("</table>");
     response.concat("<br><input type=\"submit\" name=\"submit\" value=\"Save\">");
     response.concat("</form>");

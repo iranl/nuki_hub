@@ -340,7 +340,7 @@ void initEthServer(const NetworkDeviceType device)
 
 
 void cbSyncTime(struct timeval *tv)  {
-  Serial.println(F("NTP time synched"));
+  Log->println(F("NTP time synced"));
 }
 
 void setup()
