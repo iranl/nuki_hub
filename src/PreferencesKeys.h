@@ -73,6 +73,7 @@
 #define preference_has_mac_byte_1 (char*)"macb1"
 #define preference_has_mac_byte_2 (char*)"macb2"
 #define preference_latest_version (char*)"latest"
+#define preference_totp_secret (char*)"totpsecret"
 
 class DebugPreferences
 {
@@ -86,7 +87,7 @@ private:
             preference_ip_dhcp_enabled, preference_ip_address, preference_ip_subnet, preference_ip_gateway, preference_ip_dns_server,
             preference_network_hardware, preference_network_wifi_fallback_disabled, preference_rssi_publish_interval,
             preference_find_best_rssi, preference_hostname, preference_network_timeout, preference_restart_on_disconnect,
-            preference_restart_ble_beacon_lost, preference_query_interval_lockstate, 
+            preference_restart_ble_beacon_lost, preference_query_interval_lockstate, preference_totp_secret,
             preference_query_interval_configuration, preference_query_interval_battery, preference_query_interval_keypad,
             preference_keypad_control_enabled, preference_keypad_info_enabled, preference_acl,
             preference_timecontrol_control_enabled, preference_timecontrol_info_enabled,
@@ -100,7 +101,7 @@ private:
     {
         preference_mqtt_user, preference_mqtt_password,
         preference_mqtt_ca, preference_mqtt_crt, preference_mqtt_key,
-        preference_cred_user, preference_cred_password,
+        preference_cred_user, preference_cred_password, preference_totp_secret,
         preference_nuki_id_lock, preference_nuki_id_opener,
     };
     std::vector<char*> _boolPrefs =
