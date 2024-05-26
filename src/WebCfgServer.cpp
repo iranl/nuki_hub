@@ -915,6 +915,7 @@ bool WebCfgServer::processArgs(String& message)
                 message = "Nuki Lock PIN saved";
                 _nuki->setPin(value.toInt());
             }
+            waitAndProcess(true, 1000);
             configChanged = true;
         }
         else if(key == "NUKIOPPIN" && _nukiOpener != nullptr)
@@ -929,6 +930,7 @@ bool WebCfgServer::processArgs(String& message)
                 message = "Nuki Opener PIN saved";
                 _nukiOpener->setPin(value.toInt());
             }
+            waitAndProcess(true, 1000);
             configChanged = true;
         }
     }
