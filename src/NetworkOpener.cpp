@@ -50,20 +50,43 @@ void NetworkOpener::initialize()
     _network->subscribe(_mqttPath, mqtt_topic_query_lockstate);
     _network->subscribe(_mqttPath, mqtt_topic_query_battery);
 
+    if(_preferences->getBool(preference_disable_non_json, false))
+    {
+        _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_action);
+        _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_id);
+        _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_name);
+        _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_code);
+        _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_enabled);
+        _network->removeTopic(_mqttPath, mqtt_topic_config_button_enabled);
+        _network->removeTopic(_mqttPath, mqtt_topic_config_led_enabled);
+        _network->removeTopic(_mqttPath, mqtt_topic_config_sound_level);
+        _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_result);
+        _network->removeTopic(_mqttPath, mqtt_topic_battery_level);
+        _network->removeTopic(_mqttPath, mqtt_topic_battery_critical);
+        _network->removeTopic(_mqttPath, mqtt_topic_battery_charging);
+        _network->removeTopic(_mqttPath, mqtt_topic_battery_voltage);
+        _network->removeTopic(_mqttPath, mqtt_topic_battery_keypad_critical);
+        //_network->removeTopic(_mqttPath, mqtt_topic_presence);
+    }
+
     if(_preferences->getBool(preference_keypad_control_enabled))
     {
-        _network->subscribe(_mqttPath, mqtt_topic_keypad_command_action);
-        _network->subscribe(_mqttPath, mqtt_topic_keypad_command_id);
-        _network->subscribe(_mqttPath, mqtt_topic_keypad_command_name);
-        _network->subscribe(_mqttPath, mqtt_topic_keypad_command_code);
-        _network->subscribe(_mqttPath, mqtt_topic_keypad_command_enabled);
+        if(!_preferences->getBool(preference_disable_non_json, false))
+        {
+            _network->subscribe(_mqttPath, mqtt_topic_keypad_command_action);
+            _network->subscribe(_mqttPath, mqtt_topic_keypad_command_id);
+            _network->subscribe(_mqttPath, mqtt_topic_keypad_command_name);
+            _network->subscribe(_mqttPath, mqtt_topic_keypad_command_code);
+            _network->subscribe(_mqttPath, mqtt_topic_keypad_command_enabled);
+            _network->initTopic(_mqttPath, mqtt_topic_keypad_command_action, "--");
+            _network->initTopic(_mqttPath, mqtt_topic_keypad_command_id, "0");
+            _network->initTopic(_mqttPath, mqtt_topic_keypad_command_name, "--");
+            _network->initTopic(_mqttPath, mqtt_topic_keypad_command_code, "000000");
+            _network->initTopic(_mqttPath, mqtt_topic_keypad_command_enabled, "1");
+        }
+
         _network->subscribe(_mqttPath, mqtt_topic_query_keypad);
         _network->subscribe(_mqttPath, mqtt_topic_keypad_json_action);
-        _network->initTopic(_mqttPath, mqtt_topic_keypad_command_action, "--");
-        _network->initTopic(_mqttPath, mqtt_topic_keypad_command_id, "0");
-        _network->initTopic(_mqttPath, mqtt_topic_keypad_command_name, "--");
-        _network->initTopic(_mqttPath, mqtt_topic_keypad_command_code, "000000");
-        _network->initTopic(_mqttPath, mqtt_topic_keypad_command_enabled, "1");
         _network->initTopic(_mqttPath, mqtt_topic_query_keypad, "0");
         _network->initTopic(_mqttPath, mqtt_topic_keypad_json_action, "--");
     }
@@ -72,6 +95,11 @@ void NetworkOpener::initialize()
     {
         _network->subscribe(_mqttPath, mqtt_topic_timecontrol_action);
         _network->initTopic(_mqttPath, mqtt_topic_timecontrol_action, "--");
+    }
+
+    if(_preferences->getBool(preference_publish_authdata, false))
+    {
+        _network->subscribe(_mqttPath, mqtt_topic_lock_log_rolling_last);
     }
 
     _network->addReconnectedCallback([&]()
@@ -92,6 +120,14 @@ void NetworkOpener::update()
 void NetworkOpener::onMqttDataReceived(const char* topic, byte* payload, const unsigned int length)
 {
     char* value = (char*)payload;
+
+    if(comparePrefixedPath(topic, mqtt_topic_lock_log_rolling_last))
+    {
+        if(strcmp(value, "") == 0 ||
+           strcmp(value, "--") == 0) return;
+
+        if(atoi(value) > 0 && atoi(value) > _lastRollingLog) _lastRollingLog = atoi(value);
+    }
 
     if(comparePrefixedPath(topic, mqtt_topic_lock_action))
     {
@@ -127,46 +163,50 @@ void NetworkOpener::onMqttDataReceived(const char* topic, byte* payload, const u
         }
     }
 
-    if(comparePrefixedPath(topic, mqtt_topic_keypad_command_action))
+    if(!_preferences->getBool(preference_disable_non_json, false))
     {
-        if(_keypadCommandReceivedReceivedCallback != nullptr)
+        if(comparePrefixedPath(topic, mqtt_topic_keypad_command_action))
         {
-            if(strcmp(value, "--") == 0) return;
-
-            _keypadCommandReceivedReceivedCallback(value, _keypadCommandId, _keypadCommandName, _keypadCommandCode, _keypadCommandEnabled);
-
-            _keypadCommandId = 0;
-            _keypadCommandName = "--";
-            _keypadCommandCode = "000000";
-            _keypadCommandEnabled = 1;
-
-            if(strcmp(value, "--") != 0)
+            if(_keypadCommandReceivedReceivedCallback != nullptr)
             {
-                publishString(mqtt_topic_keypad_command_action, "--");
+                if(strcmp(value, "--") == 0) return;
+
+                _keypadCommandReceivedReceivedCallback(value, _keypadCommandId, _keypadCommandName, _keypadCommandCode, _keypadCommandEnabled);
+
+                _keypadCommandId = 0;
+                _keypadCommandName = "--";
+                _keypadCommandCode = "000000";
+                _keypadCommandEnabled = 1;
+
+                if(strcmp(value, "--") != 0)
+                {
+                    publishString(mqtt_topic_keypad_command_action, "--");
+                }
+                publishInt(mqtt_topic_keypad_command_id, _keypadCommandId);
+                publishString(mqtt_topic_keypad_command_name, _keypadCommandName);
+                publishString(mqtt_topic_keypad_command_code, _keypadCommandCode);
+                publishInt(mqtt_topic_keypad_command_enabled, _keypadCommandEnabled);
             }
-            publishInt(mqtt_topic_keypad_command_id, _keypadCommandId);
-            publishString(mqtt_topic_keypad_command_name, _keypadCommandName);
-            publishString(mqtt_topic_keypad_command_code, _keypadCommandCode);
-            publishInt(mqtt_topic_keypad_command_enabled, _keypadCommandEnabled);
+        }
+        else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_id))
+        {
+            _keypadCommandId = atoi(value);
+        }
+        else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_name))
+        {
+            _keypadCommandName = value;
+        }
+        else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_code))
+        {
+            _keypadCommandCode = value;
+        }
+        else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_enabled))
+        {
+            _keypadCommandEnabled = atoi(value);
         }
     }
-    else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_id))
-    {
-        _keypadCommandId = atoi(value);
-    }
-    else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_name))
-    {
-        _keypadCommandName = value;
-    }
-    else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_code))
-    {
-        _keypadCommandCode = value;
-    }
-    else if(comparePrefixedPath(topic, mqtt_topic_keypad_command_enabled))
-    {
-        _keypadCommandEnabled = atoi(value);
-    }
-    else if(comparePrefixedPath(topic, mqtt_topic_query_config) && strcmp(value, "1") == 0)
+
+    if(comparePrefixedPath(topic, mqtt_topic_query_config) && strcmp(value, "1") == 0)
     {
         _queryCommands = _queryCommands | QUERY_COMMAND_CONFIG;
         publishString(mqtt_topic_query_config, "0");
@@ -232,6 +272,7 @@ void NetworkOpener::publishKeyTurnerState(const NukiOpener::OpenerState& keyTurn
     memset(&str, 0, sizeof(str));
 
     JsonDocument json;
+    JsonDocument jsonBattery;
 
     lockstateToString(keyTurnerState.lockState, str);
 
@@ -305,9 +346,11 @@ void NetworkOpener::publishKeyTurnerState(const NukiOpener::OpenerState& keyTurn
 
     json["door_sensor_state"] = str;
 
-    if(_firstTunerStatePublish || keyTurnerState.criticalBatteryState != lastKeyTurnerState.criticalBatteryState)
+    bool critical = (keyTurnerState.criticalBatteryState & 0b00000001) > 0;
+    jsonBattery["critical"] = critical ? "1" : "0";
+
+    if((_firstTunerStatePublish || keyTurnerState.criticalBatteryState != lastKeyTurnerState.criticalBatteryState) && !_preferences->getBool(preference_disable_non_json, false))
     {
-        bool critical = (keyTurnerState.criticalBatteryState & 0b00000001) > 0;
         publishBool(mqtt_topic_battery_critical, critical);
     }
 
@@ -316,6 +359,9 @@ void NetworkOpener::publishKeyTurnerState(const NukiOpener::OpenerState& keyTurn
 
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_lock_json, _buffer);
+
+    serializeJson(jsonBattery, _buffer, _bufferSize);
+    publishString(mqtt_topic_battery_basic_json, _buffer);
 
     _firstTunerStatePublish = false;
 }
@@ -369,23 +415,16 @@ void NetworkOpener::publishState(NukiOpener::OpenerState lockState)
     }
 }
 
-void NetworkOpener::publishAuthorizationInfo(const std::list<NukiOpener::LogEntry>& logEntries)
+void NetworkOpener::publishAuthorizationInfo(const std::list<NukiOpener::LogEntry>& logEntries, bool latest)
 {
     char str[50];
     char authName[33];
-    bool authFound = false;
+    uint32_t authIndex = 0;
 
     JsonDocument json;
 
-    int i = 5;
     for(const auto& log : logEntries)
     {
-        if(i <= 0)
-        {
-            break;
-        }
-        --i;
-
         memset(authName, 0, sizeof(authName));
         authName[0] = '\0';
 
@@ -395,9 +434,9 @@ void NetworkOpener::publishAuthorizationInfo(const std::list<NukiOpener::LogEntr
             memcpy(authName, log.name, sizeName);
             if(authName[sizeName - 1] != '\0') authName[sizeName] = '\0';
 
-            if(!authFound)
+            if(log.index > authIndex)
             {
-                authFound = true;
+                authIndex = log.index;
                 _authFound = true;
                 _authId = log.authId;
                 memset(_authName, 0, sizeof(_authName));
@@ -495,46 +534,25 @@ void NetworkOpener::publishAuthorizationInfo(const std::list<NukiOpener::LogEntr
 
                 break;
         }
+        
+        if(log.index > _lastRollingLog)
+        {
+            _lastRollingLog = log.index;
+            serializeJson(entry, _buffer, _bufferSize);
+            publishString(mqtt_topic_lock_log_rolling, _buffer);
+            publishInt(mqtt_topic_lock_log_rolling_last, log.index);
+        }
     }
 
     serializeJson(json, _buffer, _bufferSize);
-    publishString(mqtt_topic_lock_log, _buffer);
 
-    if(authFound)
+    if(latest) publishString(mqtt_topic_lock_log_latest, _buffer);
+    else publishString(mqtt_topic_lock_log, _buffer);
+
+    if(authIndex > 0)
     {
         publishUInt(mqtt_topic_lock_auth_id, _authId);
         publishString(mqtt_topic_lock_auth_name, _authName);
-    }
-}
-
-void NetworkOpener::logactionCompletionStatusToString(uint8_t value, char* out)
-{
-    switch (value)
-    {
-        case 0x00:
-            strcpy(out, "success");
-            break;
-        case 0x02:
-            strcpy(out, "cancelled");
-            break;
-        case 0x03:
-            strcpy(out, "tooRecent");
-            break;
-        case 0x04:
-            strcpy(out, "busy");
-            break;
-        case 0x08:
-            strcpy(out, "incomplete");
-            break;
-        case 0xfe:
-            strcpy(out, "otherError");
-            break;
-        case 0xff:
-            strcpy(out, "unknown");
-            break;
-        default:
-            strcpy(out, "undefined");
-            break;
     }
 }
 
@@ -557,7 +575,25 @@ void NetworkOpener::publishLockstateCommandResult(const char *resultStr)
 
 void NetworkOpener::publishBatteryReport(const NukiOpener::BatteryReport& batteryReport)
 {
-    publishFloat(mqtt_topic_battery_voltage, (float)batteryReport.batteryVoltage / 1000.0);
+    if(!_preferences->getBool(preference_disable_non_json, false))
+    {
+        publishFloat(mqtt_topic_battery_voltage, (float)batteryReport.batteryVoltage / 1000.0);
+    }
+
+    char str[50];
+    memset(&str, 0, sizeof(str));
+
+    JsonDocument json;
+
+    json["batteryVoltage"] = (float)batteryReport.batteryVoltage / 1000.0;
+    json["critical"] = batteryReport.criticalBatteryState;
+    lockactionToString(batteryReport.lockAction, str);
+    json["lockAction"] = str;
+    json["startVoltage"] = (float)batteryReport.startVoltage / 1000.0;
+    json["lowestVoltage"] = (float)batteryReport.lowestVoltage / 1000.0;
+
+    serializeJson(json, _buffer, _bufferSize);
+    publishString(mqtt_topic_battery_advanced_json, _buffer);
 }
 
 void NetworkOpener::publishConfig(const NukiOpener::Config &config)
@@ -609,8 +645,13 @@ void NetworkOpener::publishConfig(const NukiOpener::Config &config)
 
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_config_basic_json, _buffer);
-    publishBool(mqtt_topic_config_button_enabled, config.buttonEnabled == 1);
-    publishBool(mqtt_topic_config_led_enabled, config.ledFlashEnabled == 1);
+
+    if(!_preferences->getBool(preference_disable_non_json, false))
+    {
+        publishBool(mqtt_topic_config_button_enabled, config.buttonEnabled == 1);
+        publishBool(mqtt_topic_config_led_enabled, config.ledFlashEnabled == 1);
+    }
+
     publishString(mqtt_topic_info_firmware_version, std::to_string(config.firmwareVersion[0]) + "." + std::to_string(config.firmwareVersion[1]) + "." + std::to_string(config.firmwareVersion[2]));
     publishString(mqtt_topic_info_hardware_version, std::to_string(config.hardwareRevision[0]) + "." + std::to_string(config.hardwareRevision[1]));
 }
@@ -660,7 +701,11 @@ void NetworkOpener::publishAdvancedConfig(const NukiOpener::AdvancedConfig &conf
 
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_config_advanced_json, _buffer);
-    publishUInt(mqtt_topic_config_sound_level, config.soundLevel);
+
+    if(!_preferences->getBool(preference_disable_non_json, false))
+    {
+        publishUInt(mqtt_topic_config_sound_level, config.soundLevel);
+    }
 }
 
 void NetworkOpener::publishRssi(const int &rssi)
@@ -678,13 +723,31 @@ void NetworkOpener::publishBleAddress(const std::string &address)
     publishString(mqtt_topic_lock_address, address);
 }
 
-void NetworkOpener::publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, char* lockAction, char* unlockAction, char* openAction)
+void NetworkOpener::publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, const bool& publishAuthData, const bool& hasKeypad, char* lockAction, char* unlockAction, char* openAction)
 {
     String availabilityTopic = _preferences->getString("mqttpath");
     availabilityTopic.concat("/maintenance/mqttConnectionState");
 
-    _network->publishHASSConfig(deviceType, baseTopic, name, uidString, availabilityTopic.c_str(), false, lockAction, unlockAction, openAction);
+    _network->publishHASSConfig(deviceType, baseTopic, name, uidString, availabilityTopic.c_str(), hasKeypad, lockAction, unlockAction, openAction);
     _network->publishHASSConfigAdditionalOpenerEntities(deviceType, baseTopic, name, uidString);
+    if(publishAuthData)
+    {
+        _network->publishHASSConfigAccessLog(deviceType, baseTopic, name, uidString);
+    }
+    else
+    {
+        _network->removeHASSConfigTopic((char*)"sensor", (char*)"last_action_authorization", uidString);
+        _network->removeHASSConfigTopic((char*)"sensor", (char*)"rolling_log", uidString);
+    }
+    if(hasKeypad)
+    {
+        _network->publishHASSConfigKeypad(deviceType, baseTopic, name, uidString);
+    }
+    else
+    {
+        _network->removeHASSConfigTopic((char*)"sensor", (char*)"keypad_status", uidString);
+        _network->removeHASSConfigTopic((char*)"binary_sensor", (char*)"keypad_battery_low", uidString);
+    }
 }
 
 void NetworkOpener::removeHASSConfig(char* uidString)
@@ -704,12 +767,18 @@ void NetworkOpener::publishKeypad(const std::list<NukiLock::KeypadEntry>& entrie
         basePath.concat("/code_");
         basePath.concat(std::to_string(index).c_str());
         publishKeypadEntry(basePath, entry);
-      
+
         auto jsonEntry = json.add<JsonVariant>();
 
         jsonEntry["codeId"] = entry.codeId;
         jsonEntry["enabled"] = entry.enabled;
         jsonEntry["name"] = entry.name;
+
+        if(_preferences->getBool(preference_keypad_publish_code, false))
+        {
+            jsonEntry["code"] = entry.code;
+        }
+
         char createdDT[20];
         sprintf(createdDT, "%04d-%02d-%02d %02d:%02d:%02d", entry.dateCreatedYear, entry.dateCreatedMonth, entry.dateCreatedDay, entry.dateCreatedHour, entry.dateCreatedMin, entry.dateCreatedSec);
         jsonEntry["dateCreated"] = createdDT;
@@ -786,16 +855,56 @@ void NetworkOpener::publishKeypad(const std::list<NukiLock::KeypadEntry>& entrie
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_keypad_json, _buffer);
 
-    while(index < maxKeypadCodeCount)
+    if(!_preferences->getBool(preference_disable_non_json, false))
     {
-        NukiLock::KeypadEntry entry;
-        memset(&entry, 0, sizeof(entry));
-        String basePath = mqtt_topic_keypad;
-        basePath.concat("/code_");
-        basePath.concat(std::to_string(index).c_str());
-        publishKeypadEntry(basePath, entry);
+        while(index < maxKeypadCodeCount)
+        {
+            NukiLock::KeypadEntry entry;
+            memset(&entry, 0, sizeof(entry));
+            String basePath = mqtt_topic_keypad;
+            basePath.concat("/code_");
+            basePath.concat(std::to_string(index).c_str());
+            publishKeypadEntry(basePath, entry);
 
-        ++index;
+            ++index;
+        }
+        
+        if(!_preferences->getBool(preference_keypad_publish_code, false))
+        {
+            for(int i=0; i<maxKeypadCodeCount; i++)
+            {
+                String codeTopic = _mqttPath;
+                codeTopic.concat(mqtt_topic_keypad);
+                codeTopic.concat("/code_");
+                codeTopic.concat(std::to_string(i).c_str());
+                codeTopic.concat("/");
+                _network->removeTopic(codeTopic, "code");
+            }
+        }
+    }
+    else if (maxKeypadCodeCount > 0)
+    {
+        for(int i=0; i<maxKeypadCodeCount; i++)
+        {
+            String codeTopic = _mqttPath;
+            codeTopic.concat(mqtt_topic_keypad);
+            codeTopic.concat("/code_");
+            codeTopic.concat(std::to_string(i).c_str());
+            codeTopic.concat("/");
+            _network->removeTopic(codeTopic, "id");
+            _network->removeTopic(codeTopic, "enabled");
+            _network->removeTopic(codeTopic, "code");
+            _network->removeTopic(codeTopic, "name");
+            _network->removeTopic(codeTopic, "createdYear");
+            _network->removeTopic(codeTopic, "createdMonth");
+            _network->removeTopic(codeTopic, "createdDay");
+            _network->removeTopic(codeTopic, "createdHour");
+            _network->removeTopic(codeTopic, "createdMin");
+            _network->removeTopic(codeTopic, "createdSec");
+            _network->removeTopic(codeTopic, "lockCount");
+        }
+
+        _preferences->putUInt(preference_lock_max_keypad_code_count, 0);
     }
 }
 
@@ -878,6 +987,7 @@ void NetworkOpener::publishConfigCommandResult(const char* result)
 
 void NetworkOpener::publishKeypadCommandResult(const char* result)
 {
+    if(_preferences->getBool(preference_disable_non_json, false)) return;
     publishString(mqtt_topic_keypad_command_result, result);
 }
 
@@ -908,6 +1018,7 @@ void NetworkOpener::setConfigUpdateReceivedCallback(void (*configUpdateReceivedC
 
 void NetworkOpener::setKeypadCommandReceivedCallback(void (*keypadCommandReceivedReceivedCallback)(const char* command, const uint& id, const String& name, const String& code, const int& enabled))
 {
+    if(_preferences->getBool(preference_disable_non_json, false)) return;
     _keypadCommandReceivedReceivedCallback = keypadCommandReceivedReceivedCallback;
 }
 
@@ -964,6 +1075,8 @@ void NetworkOpener::publishString(const char* topic, const char* value)
 
 void NetworkOpener::publishKeypadEntry(const String topic, NukiLock::KeypadEntry entry)
 {
+    if(_preferences->getBool(preference_disable_non_json, false)) return;
+
     char codeName[sizeof(entry.name) + 1];
     memset(codeName, 0, sizeof(codeName));
     memcpy(codeName, entry.name, sizeof(entry.name));
@@ -971,6 +1084,12 @@ void NetworkOpener::publishKeypadEntry(const String topic, NukiLock::KeypadEntry
     publishInt(concat(topic, "/id").c_str(), entry.codeId);
     publishBool(concat(topic, "/enabled").c_str(), entry.enabled);
     publishString(concat(topic, "/name").c_str(), codeName);
+
+    if(_preferences->getBool(preference_keypad_publish_code, false))
+    {
+        publishInt(concat(topic, "/code").c_str(), entry.code);
+    }
+
     publishInt(concat(topic, "/createdYear").c_str(), entry.dateCreatedYear);
     publishInt(concat(topic, "/createdMonth").c_str(), entry.dateCreatedMonth);
     publishInt(concat(topic, "/createdDay").c_str(), entry.dateCreatedDay);

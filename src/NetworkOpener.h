@@ -21,7 +21,7 @@ public:
     void publishKeyTurnerState(const NukiOpener::OpenerState& keyTurnerState, const NukiOpener::OpenerState& lastKeyTurnerState);
     void publishRing(const bool locked);
     void publishState(NukiOpener::OpenerState lockState);
-    void publishAuthorizationInfo(const std::list<NukiOpener::LogEntry>& logEntries);
+    void publishAuthorizationInfo(const std::list<NukiOpener::LogEntry>& logEntries, bool latest);
     void clearAuthorizationInfo();
     void publishCommandResult(const char* resultStr);
     void publishLockstateCommandResult(const char* resultStr);
@@ -31,7 +31,7 @@ public:
     void publishRssi(const int& rssi);
     void publishRetry(const std::string& message);
     void publishBleAddress(const std::string& address);
-    void publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, char* lockAction, char* unlockAction, char* openAction);
+    void publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, const bool& publishAuthData, const bool& hasKeypad, char* lockAction, char* unlockAction, char* openAction);
     void removeHASSConfig(char* uidString);
     void publishKeypad(const std::list<NukiLock::KeypadEntry>& entries, uint maxKeypadCodeCount);
     void publishTimeControl(const std::list<NukiOpener::TimeControlEntry>& timeControlEntries);
@@ -65,14 +65,13 @@ private:
 
     void buildMqttPath(const char* path, char* outPath);
     void subscribe(const char* path);
-    void logactionCompletionStatusToString(uint8_t value, char* out);
     void buttonPressActionToString(const NukiOpener::ButtonPressAction btnPressAction, char* str);
     void fobActionToString(const int fobact, char* str);
     void operatingModeToString(const int opmode, char* str);
     void doorbellSuppressionToString(const int dbsupr, char* str);
     void soundToString(const int sound, char* str);
     void capabilitiesToString(const int capabilities, char* str);
-    
+
     String concat(String a, String b);
 
     Preferences* _preferences;
@@ -94,6 +93,7 @@ private:
     uint32_t _authId = 0;
     char _authName[33];
     bool _authFound = false;
+    uint32_t _lastRollingLog = 0;
 
     NukiOpener::LockState _currentLockState = NukiOpener::LockState::Undefined;
 

@@ -24,7 +24,7 @@ public:
 
     void publishKeyTurnerState(const NukiLock::KeyTurnerState& keyTurnerState, const NukiLock::KeyTurnerState& lastKeyTurnerState);
     void publishState(NukiLock::LockState lockState);
-    void publishAuthorizationInfo(const std::list<NukiLock::LogEntry>& logEntries);
+    void publishAuthorizationInfo(const std::list<NukiLock::LogEntry>& logEntries, bool latest);
     void clearAuthorizationInfo();
     void publishCommandResult(const char* resultStr);
     void publishLockstateCommandResult(const char* resultStr);
@@ -92,6 +92,7 @@ private:
     uint32_t _authId = 0;
     char _authName[33];
     bool _authFound = false;
+    uint32_t _lastRollingLog = 0;
 
     char* _buffer;
     size_t _bufferSize;

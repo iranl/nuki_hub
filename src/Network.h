@@ -19,7 +19,8 @@ enum class NetworkDeviceType
     Olimex_LAN8720,
     WT32_LAN8720,
     M5STACK_PoESP32_Unit,
-    LilyGO_T_ETH_POE
+    LilyGO_T_ETH_POE,
+    GL_S10
 };
 
 #define JSON_BUFFER_SIZE 1024
@@ -55,6 +56,7 @@ public:
     void publishHASSWifiRssiConfig(char* deviceType, const char* baseTopic, char* name, char* uidString);
     void removeHASSConfig(char* uidString);
     void removeHASSConfigTopic(char* deviceType, char* name, char* uidString);
+    void removeTopic(const String& mqttPath, const String& mqttTopic);
     void batteryTypeToString(const Nuki::BatteryType battype, char* str);
     void advertisingModeToString(const Nuki::AdvertisingMode advmode, char* str);
     void timeZoneIdToString(const Nuki::TimeZoneId timeZoneId, char* str);

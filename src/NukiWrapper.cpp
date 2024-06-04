@@ -7,6 +7,7 @@
 #include <NukiLockUtils.h>
 #include <time.h>
 #include "esp_sntp.h"
+#include "Config.h"
 
 NukiWrapper* nukiInst;
 Preferences* nukiLockPreferences = nullptr;
@@ -34,7 +35,7 @@ NukiWrapper::NukiWrapper(const std::string& deviceName, NukiDeviceId* deviceId, 
 
     network->setLockActionReceivedCallback(nukiInst->onLockActionReceivedCallback);
     network->setConfigUpdateReceivedCallback(nukiInst->onConfigUpdateReceivedCallback);
-    network->setKeypadCommandReceivedCallback(nukiInst->onKeypadCommandReceivedCallback);
+    if(_preferences->getBool(preference_disable_non_json, false)) network->setKeypadCommandReceivedCallback(nukiInst->onKeypadCommandReceivedCallback);
     network->setKeypadJsonCommandReceivedCallback(nukiInst->onKeypadJsonCommandReceivedCallback);
     network->setTimeControlCommandReceivedCallback(nukiInst->onTimeControlCommandReceivedCallback);
 
@@ -195,9 +196,19 @@ void NukiWrapper::update()
             setupHASS();
         }
     }
-    if(_nextTimeControlUpdateTs != 0 && ts > _nextTimeControlUpdateTs)
+    if(_waitAuthLogUpdateTs != 0 && ts > _waitAuthLogUpdateTs)
     {
-        _nextTimeControlUpdateTs = 0;
+        _waitAuthLogUpdateTs = 0;
+        updateAuthData(true);
+    }
+    if(_waitKeypadUpdateTs != 0 && ts > _waitKeypadUpdateTs)
+    {
+        _waitKeypadUpdateTs = 0;
+        updateKeypad(true);
+    }
+    if(_waitTimeControlUpdateTs != 0 && ts > _waitTimeControlUpdateTs)
+    {
+        _waitTimeControlUpdateTs = 0;
         updateTimeControl(true);
     }
     if(_preferences->getBool(preference_update_time) && ts > (120 * 1000) && ts > _nextTimeUpdateTs)
@@ -224,7 +235,7 @@ void NukiWrapper::update()
     if(_hasKeypad && _keypadEnabled && (_nextKeypadUpdateTs == 0 || ts > _nextKeypadUpdateTs || (queryCommands & QUERY_COMMAND_KEYPAD) > 0))
     {
         _nextKeypadUpdateTs = ts + _intervalKeypad * 1000;
-        updateKeypad();
+        updateKeypad(false);
     }
 
     if(_nextLockAction != (NukiLock::LockAction)0xff && ts > _nextRetryTs)
@@ -331,6 +342,10 @@ void NukiWrapper::setPin(const uint16_t pin)
 void NukiWrapper::unpair()
 {
     _nukiLock.unPairNuki();
+    Preferences nukiBlePref;
+    nukiBlePref.begin("NukiHub", false);
+    nukiBlePref.clear();
+    nukiBlePref.end();
     _deviceId->assignNewId();
     _preferences->remove(preference_nuki_id_lock);
     _paired = false;
@@ -362,7 +377,7 @@ void NukiWrapper::updateKeyTurnerState()
     if(_publishAuthData)
     {
         Log->println(F("Publishing auth data"));
-        updateAuthData();
+        updateAuthData(false);
         Log->println(F("Done publishing auth data"));
     }
 
@@ -467,7 +482,7 @@ void NukiWrapper::updateConfig()
     }
 }
 
-void NukiWrapper::updateAuthData()
+void NukiWrapper::updateAuthData(bool retrieved)
 {
     if(!isPinValid())
     {
@@ -475,37 +490,73 @@ void NukiWrapper::updateAuthData()
         return;
     }
 
-    Nuki::CmdResult result = _nukiLock.retrieveLogEntries(0, 5, 1, false);
-    Log->print(F("Retrieve log entries: "));
-    Log->println(result);
-    if(result != Nuki::CmdResult::Success)
+    if(!retrieved)
     {
-        return;
+        delay(250);
+        Nuki::CmdResult result = _nukiLock.retrieveLogEntries(0, _preferences->getInt(preference_authlog_max_entries, MAX_AUTHLOG), 1, false);
+        Log->print(F("Retrieve log entries: "));
+        Log->println(result);
+        printCommandResult(result);
+        if(result == Nuki::CmdResult::Success)
+        {
+            _waitAuthLogUpdateTs = millis() + 5000;
+            delay(100);
+
+            std::list<NukiLock::LogEntry> log;
+            _nukiLock.getLogEntries(&log);
+            
+            if(log.size() > _preferences->getInt(preference_authlog_max_entries, 3))
+            {
+                log.resize(_preferences->getInt(preference_authlog_max_entries, 3));
+            }
+
+            log.sort([](const NukiLock::LogEntry& a, const NukiLock::LogEntry& b) { return a.index < b.index; });
+
+            if(log.size() > 0)
+            {
+                 _network->publishAuthorizationInfo(log, true);
+            }
+        }
+    }
+    else
+    {
+        std::list<NukiLock::LogEntry> log;
+        _nukiLock.getLogEntries(&log);
+
+        if(log.size() > _preferences->getInt(preference_authlog_max_entries, MAX_AUTHLOG))
+        {
+            log.resize(_preferences->getInt(preference_authlog_max_entries, MAX_AUTHLOG));
+        }
+        
+        log.sort([](const NukiLock::LogEntry& a, const NukiLock::LogEntry& b) { return a.index < b.index; });
+
+        Log->print(F("Log size: "));
+        Log->println(log.size());
+
+        if(log.size() > 0)
+        {
+             _network->publishAuthorizationInfo(log, false);
+        }
     }
 
-    delay(100);
-
-    std::list<NukiLock::LogEntry> log;
-    _nukiLock.getLogEntries(&log);
-
-    Log->print(F("Log size: "));
-    Log->println(log.size());
-
-    if(log.size() > 0)
-    {
-         _network->publishAuthorizationInfo(log);
-    }
     postponeBleWatchdog();
 }
 
-void NukiWrapper::updateKeypad()
+void NukiWrapper::updateKeypad(bool retrieved)
 {
     if(!_preferences->getBool(preference_keypad_info_enabled)) return;
 
-    Log->print(F("Querying lock keypad: "));
-    Nuki::CmdResult result = _nukiLock.retrieveKeypadEntries(0, 0xffff);
-    printCommandResult(result);
-    if(result == Nuki::CmdResult::Success)
+    if(!retrieved)
+    {
+        Log->print(F("Querying lock keypad: "));
+        Nuki::CmdResult result = _nukiLock.retrieveKeypadEntries(0, _preferences->getInt(preference_keypad_max_entries, MAX_KEYPAD));
+        printCommandResult(result);
+        if(result == Nuki::CmdResult::Success)
+        {
+            _waitKeypadUpdateTs = millis() + 5000;
+        }
+    }
+    else
     {
         std::list<NukiLock::KeypadEntry> entries;
         _nukiLock.getKeypadEntries(&entries);
@@ -515,8 +566,13 @@ void NukiWrapper::updateKeypad()
 
         entries.sort([](const NukiLock::KeypadEntry& a, const NukiLock::KeypadEntry& b) { return a.codeId < b.codeId; });
 
+        if(entries.size() > _preferences->getInt(preference_keypad_max_entries, MAX_KEYPAD))
+        {
+            entries.resize(_preferences->getInt(preference_keypad_max_entries, MAX_KEYPAD));
+        }
+
         uint keypadCount = entries.size();
-        if(keypadCount > _maxKeypadCodeCount)
+        if(keypadCount > _maxKeypadCodeCount && !_preferences->getBool(preference_disable_non_json, false))
         {
             _maxKeypadCodeCount = keypadCount;
             _preferences->putUInt(preference_lock_max_keypad_code_count, _maxKeypadCodeCount);
@@ -549,7 +605,7 @@ void NukiWrapper::updateTimeControl(bool retrieved)
         printCommandResult(result);
         if(result == Nuki::CmdResult::Success)
         {
-            _nextTimeControlUpdateTs = millis() + 5000;
+            _waitTimeControlUpdateTs = millis() + 5000;
         }
     }
     else
@@ -561,6 +617,11 @@ void NukiWrapper::updateTimeControl(bool retrieved)
         Log->println(timeControlEntries.size());
 
         timeControlEntries.sort([](const NukiLock::TimeControlEntry& a, const NukiLock::TimeControlEntry& b) { return a.entryId < b.entryId; });
+
+        if(timeControlEntries.size() > _preferences->getInt(preference_timecontrol_max_entries, MAX_TIMECONTROL))
+        {
+            timeControlEntries.resize(_preferences->getInt(preference_timecontrol_max_entries, MAX_TIMECONTROL));
+        }
 
         _network->publishTimeControl(timeControlEntries);
 
@@ -758,8 +819,8 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
     }
 
     Nuki::CmdResult cmdResult;
-    const char *basicKeys[] = {"name", "latitude", "longitude", "autoUnlatch", "pairingEnabled", "buttonEnabled", "ledEnabled", "ledBrightness", "timeZoneOffset", "dstMode", "fobAction1",  "fobAction2", "fobAction3", "singleLock", "advertisingMode", "timeZone"};
-    const char *advancedKeys[] = {"unlockedPositionOffsetDegrees", "lockedPositionOffsetDegrees", "singleLockedPositionOffsetDegrees", "unlockedToLockedTransitionOffsetDegrees", "lockNgoTimeout", "singleButtonPressAction", "doubleButtonPressAction", "detachedCylinder", "batteryType", "automaticBatteryTypeDetection", "unlatchDuration", "autoLockTimeOut",  "autoUnLockDisabled", "nightModeEnabled", "nightModeStartTime", "nightModeEndTime", "nightModeAutoLockEnabled", "nightModeAutoUnlockDisabled", "nightModeImmediateLockOnStart", "autoLockEnabled", "immediateAutoLockEnabled", "autoUpdateEnabled"};
+    const char *basicKeys[16] = {"name", "latitude", "longitude", "autoUnlatch", "pairingEnabled", "buttonEnabled", "ledEnabled", "ledBrightness", "timeZoneOffset", "dstMode", "fobAction1",  "fobAction2", "fobAction3", "singleLock", "advertisingMode", "timeZone"};
+    const char *advancedKeys[22] = {"unlockedPositionOffsetDegrees", "lockedPositionOffsetDegrees", "singleLockedPositionOffsetDegrees", "unlockedToLockedTransitionOffsetDegrees", "lockNgoTimeout", "singleButtonPressAction", "doubleButtonPressAction", "detachedCylinder", "batteryType", "automaticBatteryTypeDetection", "unlatchDuration", "autoLockTimeOut",  "autoUnLockDisabled", "nightModeEnabled", "nightModeStartTime", "nightModeEndTime", "nightModeAutoLockEnabled", "nightModeAutoUnlockDisabled", "nightModeImmediateLockOnStart", "autoLockEnabled", "immediateAutoLockEnabled", "autoUpdateEnabled"};
     bool basicUpdated = false;
     bool advancedUpdated = false;
     uint32_t basicLockConfigAclPrefs[16];
@@ -973,177 +1034,177 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
         }
     }
 
-    for(int i=0; i < 22; i++)
+    for(int j=0; j < 22; j++)
     {
-        if(json[advancedKeys[i]])
+        if(json[advancedKeys[j]])
         {
-            const char *jsonchar = json[advancedKeys[i]].as<const char*>();
+            const char *jsonchar = json[advancedKeys[j]].as<const char*>();
 
             if(strlen(jsonchar) == 0)
             {
-                jsonResult[advancedKeys[i]] = "noValueSet";
+                jsonResult[advancedKeys[j]] = "noValueSet";
                 continue;
             }
 
-            if((int)advancedLockConfigAclPrefs[i] == 1)
+            if((int)advancedLockConfigAclPrefs[j] == 1)
             {
                 cmdResult = Nuki::CmdResult::Error;
 
-                if(strcmp(advancedKeys[i], "unlockedPositionOffsetDegrees") == 0)
+                if(strcmp(advancedKeys[j], "unlockedPositionOffsetDegrees") == 0)
                 {
                     const int16_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= -90 && keyvalue <= 180)
                     {
-                        if(_nukiAdvancedConfig.unlockedPositionOffsetDegrees == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.unlockedPositionOffsetDegrees == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setUnlockedPositionOffsetDegrees(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "lockedPositionOffsetDegrees") == 0)
+                else if(strcmp(advancedKeys[j], "lockedPositionOffsetDegrees") == 0)
                 {
                     const int16_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= -180 && keyvalue <= 90)
                     {
-                        if(_nukiAdvancedConfig.lockedPositionOffsetDegrees == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.lockedPositionOffsetDegrees == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setLockedPositionOffsetDegrees(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "singleLockedPositionOffsetDegrees") == 0)
+                else if(strcmp(advancedKeys[j], "singleLockedPositionOffsetDegrees") == 0)
                 {
                     const int16_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= -180 && keyvalue <= 180)
                     {
-                        if(_nukiAdvancedConfig.singleLockedPositionOffsetDegrees == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.singleLockedPositionOffsetDegrees == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setSingleLockedPositionOffsetDegrees(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "unlockedToLockedTransitionOffsetDegrees") == 0)
+                else if(strcmp(advancedKeys[j], "unlockedToLockedTransitionOffsetDegrees") == 0)
                 {
                     const int16_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= -180 && keyvalue <= 180)
                     {
-                        if(_nukiAdvancedConfig.unlockedToLockedTransitionOffsetDegrees == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.unlockedToLockedTransitionOffsetDegrees == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setUnlockedToLockedTransitionOffsetDegrees(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "lockNgoTimeout") == 0)
+                else if(strcmp(advancedKeys[j], "lockNgoTimeout") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= 5 && keyvalue <= 60)
                     {
-                        if(_nukiAdvancedConfig.lockNgoTimeout == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.lockNgoTimeout == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setLockNgoTimeout(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "singleButtonPressAction") == 0)
+                else if(strcmp(advancedKeys[j], "singleButtonPressAction") == 0)
                 {
                     NukiLock::ButtonPressAction sbpa = nukiInst->buttonPressActionToEnum(jsonchar);
 
                     if((int)sbpa != 0xff)
                     {
-                        if(_nukiAdvancedConfig.singleButtonPressAction == sbpa) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.singleButtonPressAction == sbpa) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setSingleButtonPressAction(sbpa);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "doubleButtonPressAction") == 0)
+                else if(strcmp(advancedKeys[j], "doubleButtonPressAction") == 0)
                 {
                     NukiLock::ButtonPressAction dbpa = nukiInst->buttonPressActionToEnum(jsonchar);
 
                     if((int)dbpa != 0xff)
                     {
-                        if(_nukiAdvancedConfig.doubleButtonPressAction == dbpa) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.doubleButtonPressAction == dbpa) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setDoubleButtonPressAction(dbpa);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "detachedCylinder") == 0)
+                else if(strcmp(advancedKeys[j], "detachedCylinder") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.detachedCylinder == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.detachedCylinder == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableDetachedCylinder((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "batteryType") == 0)
+                else if(strcmp(advancedKeys[j], "batteryType") == 0)
                 {
                     Nuki::BatteryType battype = nukiInst->batteryTypeToEnum(jsonchar);
 
                     if((int)battype != 0xff)
                     {
-                        if(_nukiAdvancedConfig.batteryType == battype) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.batteryType == battype) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setBatteryType(battype);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "automaticBatteryTypeDetection") == 0)
+                else if(strcmp(advancedKeys[j], "automaticBatteryTypeDetection") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.automaticBatteryTypeDetection == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.automaticBatteryTypeDetection == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableAutoBatteryTypeDetection((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "unlatchDuration") == 0)
+                else if(strcmp(advancedKeys[j], "unlatchDuration") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= 1 && keyvalue <= 30)
                     {
-                        if(_nukiAdvancedConfig.unlatchDuration == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.unlatchDuration == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setUnlatchDuration(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "autoLockTimeOut") == 0)
+                else if(strcmp(advancedKeys[j], "autoLockTimeOut") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue >= 30 && keyvalue <= 180)
                     {
-                        if(_nukiAdvancedConfig.autoLockTimeOut == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.autoLockTimeOut == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setAutoLockTimeOut(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "autoUnLockDisabled") == 0)
+                else if(strcmp(advancedKeys[j], "autoUnLockDisabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.autoUnLockDisabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.autoUnLockDisabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.disableAutoUnlock((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "nightModeEnabled") == 0)
+                else if(strcmp(advancedKeys[j], "nightModeEnabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.nightModeEnabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.nightModeEnabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableNightMode((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "nightModeStartTime") == 0)
+                else if(strcmp(advancedKeys[j], "nightModeStartTime") == 0)
                 {
                     String keystr = jsonchar;
                     unsigned char keyvalue[2];
@@ -1151,12 +1212,12 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
                     keyvalue[1] = (uint8_t)keystr.substring(3, 5).toInt();
                     if(keyvalue[0] >= 0 && keyvalue[0] <= 23 && keyvalue[1] >= 0 && keyvalue[1] <= 59)
                     {
-                        if(_nukiAdvancedConfig.nightModeStartTime == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.nightModeStartTime == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setNightModeStartTime(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "nightModeEndTime") == 0)
+                else if(strcmp(advancedKeys[j], "nightModeEndTime") == 0)
                 {
                     String keystr = jsonchar;
                     unsigned char keyvalue[2];
@@ -1164,96 +1225,93 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
                     keyvalue[1] = (uint8_t)keystr.substring(3, 5).toInt();
                     if(keyvalue[0] >= 0 && keyvalue[0] <= 23 && keyvalue[1] >= 0 && keyvalue[1] <= 59)
                     {
-                        if(_nukiAdvancedConfig.nightModeEndTime == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.nightModeEndTime == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.setNightModeEndTime(keyvalue);
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "nightModeAutoLockEnabled") == 0)
+                else if(strcmp(advancedKeys[j], "nightModeAutoLockEnabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.nightModeAutoLockEnabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.nightModeAutoLockEnabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableNightModeAutoLock((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "nightModeAutoUnlockDisabled") == 0)
+                else if(strcmp(advancedKeys[j], "nightModeAutoUnlockDisabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.nightModeAutoUnlockDisabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.nightModeAutoUnlockDisabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.disableNightModeAutoUnlock((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "nightModeImmediateLockOnStart") == 0)
+                else if(strcmp(advancedKeys[j], "nightModeImmediateLockOnStart") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.nightModeImmediateLockOnStart == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.nightModeImmediateLockOnStart == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableNightModeImmediateLockOnStart((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "autoLockEnabled") == 0)
+                else if(strcmp(advancedKeys[j], "autoLockEnabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.autoLockEnabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.autoLockEnabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableAutoLock((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "immediateAutoLockEnabled") == 0)
+                else if(strcmp(advancedKeys[j], "immediateAutoLockEnabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.immediateAutoLockEnabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.immediateAutoLockEnabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableImmediateAutoLock((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
-                else if(strcmp(advancedKeys[i], "autoUpdateEnabled") == 0)
+                else if(strcmp(advancedKeys[j], "autoUpdateEnabled") == 0)
                 {
                     const uint8_t keyvalue = atoi(jsonchar);
 
                     if(keyvalue == 0 || keyvalue == 1)
                     {
-                        if(_nukiAdvancedConfig.autoUpdateEnabled == keyvalue) jsonResult[advancedKeys[i]] = "unchanged";
+                        if(_nukiAdvancedConfig.autoUpdateEnabled == keyvalue) jsonResult[advancedKeys[j]] = "unchanged";
                         else cmdResult = _nukiLock.enableAutoUpdate((keyvalue > 0));
                     }
-                    else jsonResult[advancedKeys[i]] = "invalidValue";
+                    else jsonResult[advancedKeys[j]] = "invalidValue";
                 }
 
                 if(cmdResult == Nuki::CmdResult::Success) advancedUpdated = true;
 
-                if(!jsonResult[advancedKeys[i]]) {
+                if(!jsonResult[advancedKeys[j]]) {
                     char resultStr[15] = {0};
                     NukiLock::cmdResultToString(cmdResult, resultStr);
-                    jsonResult[advancedKeys[i]] = resultStr;
+                    jsonResult[advancedKeys[j]] = resultStr;
                 }
             }
-            else jsonResult[advancedKeys[i]] = "accessDenied";
+            else jsonResult[advancedKeys[j]] = "accessDenied";
         }
     }
 
     nukiLockPreferences->end();
 
-    if(basicUpdated || advancedUpdated)
-    {
-        jsonResult["general"] = "success";
-    }
+    if(basicUpdated || advancedUpdated) jsonResult["general"] = "success";
     else jsonResult["general"] = "noChange";
 
     _nextConfigUpdateTs = millis() + 300;
@@ -1303,6 +1361,8 @@ void NukiWrapper::gpioActionCallback(const GpioAction &action, const int& pin)
 
 void NukiWrapper::onKeypadCommandReceived(const char *command, const uint &id, const String &name, const String &code, const int& enabled)
 {
+    if(_preferences->getBool(preference_disable_non_json, false)) return;
+
     if(!_preferences->getBool(preference_keypad_control_enabled))
     {
         _network->publishKeypadCommandResult("KeypadControlDisabled");
@@ -1352,7 +1412,7 @@ void NukiWrapper::onKeypadCommandReceived(const char *command, const uint &id, c
         entry.code = codeInt;
         result = _nukiLock.addKeypadEntry(entry);
         Log->print("Add keypad code: "); Log->println((int)result);
-        updateKeypad();
+        updateKeypad(false);
     }
     else if(strcmp(command, "delete") == 0)
     {
@@ -1363,7 +1423,7 @@ void NukiWrapper::onKeypadCommandReceived(const char *command, const uint &id, c
         }
         result = _nukiLock.deleteKeypadEntry(id);
         Log->print("Delete keypad code: "); Log->println((int)result);
-        updateKeypad();
+        updateKeypad(false);
     }
     else if(strcmp(command, "update") == 0)
     {
@@ -1397,7 +1457,7 @@ void NukiWrapper::onKeypadCommandReceived(const char *command, const uint &id, c
         entry.enabled = enabled == 0 ? 0 : 1;
         result = _nukiLock.updateKeypadEntry(entry);
         Log->print("Update keypad code: "); Log->println((int)result);
-        updateKeypad();
+        updateKeypad(false);
     }
     else if(command == "--")
     {
@@ -1751,7 +1811,7 @@ void NukiWrapper::onKeypadJsonCommandReceived(const char *value)
             return;
         }
 
-        updateKeypad();
+        updateKeypad(false);
 
         if((int)result != -1)
         {
