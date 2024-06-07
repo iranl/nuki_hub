@@ -63,6 +63,7 @@ private:
     void updateKeypad(bool retrieved);
     void updateTimeControl(bool retrieved);
     void postponeBleWatchdog();
+    void updateTime();
 
     void updateGpioOutputs();
 
@@ -127,6 +128,8 @@ private:
     unsigned long _nextLockStateUpdateTs = 0;
     unsigned long _nextBatteryReportTs = 0;
     unsigned long _nextConfigUpdateTs = 0;
+    unsigned long _nextTimeControlUpdateTs = 0;
+    unsigned long _nextTimeUpdateTs = 0;
     unsigned long _waitAuthLogUpdateTs = 0;
     unsigned long _waitKeypadUpdateTs = 0;    
     unsigned long _waitTimeControlUpdateTs = 0;
