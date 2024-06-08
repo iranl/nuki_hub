@@ -18,8 +18,8 @@
   ],
   "dependencies": [
     {
-      "name": "NimBLE-Arduino",
-      "version": "h2zero/NimBLE-Arduino @ ^1.4.0"
+      "name": "esp-nimble-cpp",
+      "version": "^1.4.0"
     }
   ]
 }

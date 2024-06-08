@@ -7,9 +7,9 @@
 #include "RestartReason.h"
 #include <esp_task_wdt.h>
 #include <esp_wifi.h>
-#include <ArduinoJson.h>
+#include "ArduinoJson.h"
 
-WebCfgServer::WebCfgServer(NukiWrapper* nuki, NukiOpenerWrapper* nukiOpener, Network* network, Gpio* gpio, EthServer* ethServer, Preferences* preferences, bool allowRestartToPortal)
+WebCfgServer::WebCfgServer(NukiWrapper* nuki, NukiOpenerWrapper* nukiOpener, NukiNetwork* network, Gpio* gpio, EthServer* ethServer, Preferences* preferences, bool allowRestartToPortal)
 : _server(ethServer),
   _nuki(nuki),
   _nukiOpener(nukiOpener),
@@ -2267,7 +2267,7 @@ void WebCfgServer::printDropDown(String &response, const char *token, const char
     response.concat(token);
     response.concat("\">");
 
-    for(const auto option : options)
+    for(const auto& option : options)
     {
         if(option.first == preselectedValue)
         {
@@ -2392,7 +2392,12 @@ void WebCfgServer::handleOtaUpload()
             filename = "/" + filename;
         }
         _otaStartTs = millis();
-        esp_task_wdt_init(30, false);
+        esp_task_wdt_config_t twdt_config = {
+            .timeout_ms = 30000,
+            .idle_core_mask = 0,
+            .trigger_panic = false,
+        };        
+        esp_task_wdt_init(&twdt_config);
         _network->disableAutoRestarts();
         _network->disableMqtt();
         if(_nuki != nullptr)

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <WiFiClient.h>
-#include <WiFiClientSecure.h>
+#include <NetworkClientSecure.h>
 #include <Preferences.h>
 #include "NetworkDevice.h"
 #include "WiFiManager.h"

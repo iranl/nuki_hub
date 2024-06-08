@@ -11,3 +11,6 @@ webflash/*.bin
 .pio
 .vscode
 .project
+managed_components
+dependencies.lock
+sdkconfig.esp32*

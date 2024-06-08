@@ -1,6 +1,6 @@
 #include "Arduino.h"
 #include "NukiWrapper.h"
-#include "NetworkLock.h"
+#include "NukiNetworkLock.h"
 #include "WebCfgServer.h"
 #include <RTOS.h>
 #include "PreferencesKeys.h"
@@ -15,9 +15,9 @@
 #include "CharBuffer.h"
 #include "NukiDeviceId.h"
 
-Network* network = nullptr;
-NetworkLock* networkLock = nullptr;
-NetworkOpener* networkOpener = nullptr;
+NukiNetwork* network = nullptr;
+NukiNetworkLock* networkLock = nullptr;
+NukiNetworkOpener* networkOpener = nullptr;
 WebCfgServer* webCfgServer = nullptr;
 BleScanner::Scanner* bleScanner = nullptr;
 NukiWrapper* nuki = nullptr;
@@ -154,7 +154,6 @@ bool initPreferences()
     {
         preferences->putBool(preference_started_before, true);
         preferences->putBool(preference_lock_enabled, true);
-        preferences->putBool(preference_conf_info_enabled, true);
         uint32_t aclPrefs[17] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
         preferences->putBytes(preference_acl, (byte*)(&aclPrefs), sizeof(aclPrefs));
         uint32_t basicLockConfigAclPrefs[16] = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
@@ -261,7 +260,6 @@ void setup()
     Log = &Serial;
 
     Log->print(F("Nuki Hub version ")); Log->println(NUKI_HUB_VERSION);
-    
     Log->print(F("Nuki Hub build ")); Log->println(NUKI_HUB_BUILD);
 
     bool firstStart = initPreferences();
@@ -276,7 +274,7 @@ void setup()
     {
         preferences->putInt(preference_bootloop_counter, preferences->getInt(preference_bootloop_counter, 0) + 1);
         Log->println(F("Bootloop counter incremented"));
-        
+
         if(preferences->getInt(preference_bootloop_counter) == 10)
         {
             preferences->putInt(preference_buffer_size, CHAR_BUFFER_SIZE);
@@ -299,7 +297,7 @@ void setup()
     {
         deviceIdOpener->assignId(deviceIdLock->get());
     }
-    
+
     char16_t buffer_size = preferences->getInt(preference_buffer_size, 4096);
 
     CharBuffer::initialize(buffer_size);
@@ -318,15 +316,15 @@ void setup()
     openerEnabled = preferences->getBool(preference_opener_enabled);
 
     const String mqttLockPath = preferences->getString(preference_mqtt_lock_path);
-    network = new Network(preferences, gpio, mqttLockPath, CharBuffer::get(), buffer_size);
+    network = new NukiNetwork(preferences, gpio, mqttLockPath, CharBuffer::get(), buffer_size);
     network->initialize();
 
-    networkLock = new NetworkLock(network, preferences, CharBuffer::get(), buffer_size);
+    networkLock = new NukiNetworkLock(network, preferences, CharBuffer::get(), buffer_size);
     networkLock->initialize();
 
     if(openerEnabled)
     {
-        networkOpener = new NetworkOpener(network, preferences, CharBuffer::get(), buffer_size);
+        networkOpener = new NukiNetworkOpener(network, preferences, CharBuffer::get(), buffer_size);
         networkOpener->initialize();
     }
 
@@ -334,7 +332,7 @@ void setup()
 
     bleScanner = new BleScanner::Scanner();
     bleScanner->initialize("NukiHub");
-    bleScanner->setScanDuration(10);
+    bleScanner->setScanDuration(10 * 1000);
 
     Log->println(lockEnabled ? F("Nuki Lock enabled") : F("Nuki Lock disabled"));
     if(lockEnabled)
@@ -358,7 +356,7 @@ void setup()
 
     if(preferences->getInt(preference_presence_detection_timeout) >= 0)
     {
-        presenceDetection = new PresenceDetection(preferences, bleScanner, network, CharBuffer::get(), CHAR_BUFFER_SIZE);
+        presenceDetection = new PresenceDetection(preferences, bleScanner, network, CharBuffer::getPresence(), CHAR_BUFFER_SIZE);
         presenceDetection->initialize();
     }
 
@@ -368,4 +366,12 @@ void setup()
 void loop()
 {
     vTaskDelete(NULL);
+}
+
+void printBeforeSetupInfo()
+{
+}
+
+void printAfterSetupInfo()
+{
 }
