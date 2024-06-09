@@ -31,7 +31,12 @@ void Scanner::initialize(const std::string& deviceName, const bool wantDuplicate
     BLEDevice::init(deviceName);
   }
   bleScan = BLEDevice::getScan();
+
+  #if (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0))
+  bleScan->setAdvertisedDeviceCallbacks(this, wantDuplicates);
+  #else
   bleScan->setScanCallbacks(this, wantDuplicates);
+  #endif
   bleScan->setInterval(interval);
   bleScan->setWindow(window);
 }
@@ -40,7 +45,7 @@ void Scanner::update() {
   if (!scanningEnabled || bleScan->isScanning()) {
     return;
   }
-  
+
   if (scanDuration == 0) {
     // Avoid unbridled growth of results vector
     bleScan->setMaxResults(0);
@@ -48,7 +53,11 @@ void Scanner::update() {
     log_w("Ble scanner max results not 0. Be aware of memory issue due to unbridled growth of results vector");
   }
 
+  #if (ESP_IDF_VERSION < ESP_IDF_VERSION_VAL(5, 0, 0))
+  bool result = bleScan->start(scanDuration, nullptr, false);
+  #else
   bool result = bleScan->start(scanDuration, false);
+  #endif
   // if (!result) {
   //   scanErrors++;
   //   if (scanErrors % 100 == 0) {

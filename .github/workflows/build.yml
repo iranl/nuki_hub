@@ -62,6 +62,9 @@ jobs:
             BOARD="${BOARD}_dbg"
           fi
           echo "::group::Building with PlatformIO"
+            if [ "$BUILD" = "release" ]; then
+              make updater_${BOARD}
+            fi
             make $BOARD
           echo "::endgroup::"
       - name: Add flash script

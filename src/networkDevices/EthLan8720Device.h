@@ -24,7 +24,9 @@ typedef enum {
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
 #include "NetworkDevice.h"
+#ifndef NUKI_HUB_UPDATER
 #include "espMqttClient.h"
+#endif
 #include <ETH.h>
 
 class EthLan8720Device : public NetworkDevice
@@ -74,8 +76,9 @@ private:
     eth_phy_type_t _type;
     eth_clock_mode_t _clock_mode;
     bool _use_mac_from_efuse;
-
+    #ifndef NUKI_HUB_UPDATER
     char _ca[TLS_CA_MAX_SIZE] = {0};
     char _cert[TLS_CERT_MAX_SIZE] = {0};
     char _key[TLS_KEY_MAX_SIZE] = {0};
+    #endif
 };

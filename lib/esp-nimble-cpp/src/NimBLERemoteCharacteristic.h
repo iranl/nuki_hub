@@ -52,7 +52,6 @@ public:
     bool                                           canRead();
     bool                                           canWrite();
     bool                                           canWriteNoResponse();
-    uint8_t                                        getProperties();
     std::vector<NimBLERemoteDescriptor*>::iterator begin();
     std::vector<NimBLERemoteDescriptor*>::iterator end();
     NimBLERemoteDescriptor*                        getDescriptor(const NimBLEUUID &uuid);

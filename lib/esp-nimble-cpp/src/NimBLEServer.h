@@ -69,6 +69,8 @@ public:
     NimBLEService*         getServiceByHandle(uint16_t handle);
     int                    disconnect(uint16_t connID,
                                       uint8_t reason = BLE_ERR_REM_USER_CONN_TERM);
+    int                    disconnect(const NimBLEConnInfo &connInfo,
+                                      uint8_t reason = BLE_ERR_REM_USER_CONN_TERM);
     void                   updateConnParams(uint16_t conn_handle,
                                             uint16_t minInterval, uint16_t maxInterval,
                                             uint16_t latency, uint16_t timeout);
@@ -152,24 +154,31 @@ public:
     virtual void onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo);
 
     /**
-     * @brief Called when a client requests a passkey for pairing.
+     * @brief Called when a client requests a passkey for pairing (display).
      * @return The passkey to be sent to the client.
      */
-    virtual uint32_t onPassKeyRequest();
+    virtual uint32_t onPassKeyDisplay();
+
+    /**
+     * @brief Called when using numeric comparision for pairing.
+     * @param [in] connInfo A reference to a NimBLEConnInfo instance with information
+     * Should be passed back to NimBLEDevice::injectConfirmPIN
+     * @param [in] pin The pin to compare with the client.
+     */
+    virtual void onConfirmPIN(const NimBLEConnInfo& connInfo, uint32_t pin);
 
     /**
      * @brief Called when the pairing procedure is complete.
      * @param [in] connInfo A reference to a NimBLEConnInfo instance with information
      * about the peer connection parameters.
      */
-    virtual void onAuthenticationComplete(NimBLEConnInfo& connInfo);
+    virtual void onAuthenticationComplete(const NimBLEConnInfo& connInfo);
 
     /**
-     * @brief Called when using numeric comparision for pairing.
-     * @param [in] pin The pin to compare with the client.
-     * @return True to accept the pin.
+     * @brief Called when the peer identity address is resolved.
+     * @param [in] connInfo A reference to a NimBLEConnInfo instance with information
      */
-    virtual bool onConfirmPIN(uint32_t pin);
+    virtual void onIdentity(const NimBLEConnInfo& connInfo);
 }; // NimBLEServerCallbacks
 
 #endif /* CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ROLE_PERIPHERAL */

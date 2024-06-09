@@ -1,8 +1,10 @@
 #pragma once
 
+#include <Preferences.h>
 #include "BleScanner.h"
 #include "BleInterfaces.h"
-#include "NukiNetwork.h"
+#include <memory>
+#include <mutex>
 
 struct PdDevice
 {
@@ -16,23 +18,25 @@ struct PdDevice
 class PresenceDetection : public BleScanner::Subscriber
 {
 public:
-    PresenceDetection(Preferences* preferences, BleScanner::Scanner* bleScanner, NukiNetwork* network, char* buffer, size_t bufferSize);
+    PresenceDetection(Preferences* preferences, BleScanner::Scanner* bleScanner, char* buffer, size_t bufferSize);
     virtual ~PresenceDetection();
 
     void initialize();
-    void update();
+    char* generateCsv();
+    bool enabled();
 
     void onResult(NimBLEAdvertisedDevice* advertisedDevice) override;
 
 private:
-    void buildCsv(const PdDevice& device);
+    void buildCsv(const std::shared_ptr<PdDevice>& device);
+
+    std::mutex mtx;
 
     Preferences* _preferences;
     BleScanner::Scanner* _bleScanner;
-    NukiNetwork* _network;
     char* _csv = {0};
     size_t _bufferSize = 0;
-    std::map<long long, PdDevice> _devices;
+    std::map<long long, std::shared_ptr<PdDevice>> _devices;
     int _timeout = 20000;
     int _csvIndex = 0;
 };

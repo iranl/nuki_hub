@@ -7,10 +7,9 @@
 #include "NimBLEBeacon.h"
 #include "NukiUtils.h"
 
-PresenceDetection::PresenceDetection(Preferences* preferences, BleScanner::Scanner *bleScanner, NukiNetwork* network, char* buffer, size_t bufferSize)
+PresenceDetection::PresenceDetection(Preferences* preferences, BleScanner::Scanner *bleScanner, char* buffer, size_t bufferSize)
 : _preferences(preferences),
   _bleScanner(bleScanner),
-  _network(network),
   _csv(buffer),
   _bufferSize(bufferSize)
 {
@@ -30,8 +29,6 @@ PresenceDetection::~PresenceDetection()
     _bleScanner->unsubscribe(this);
     _bleScanner = nullptr;
 
-    _network = nullptr;
-
     delete _csv;
     _csv = nullptr;
 }
@@ -41,58 +38,56 @@ void PresenceDetection::initialize()
     _bleScanner->subscribe(this);
 }
 
-void PresenceDetection::update()
+char* PresenceDetection::generateCsv()
 {
-    delay(3000);
-
-    if(_timeout < 0) return;
+    if(!enabled()) return nullptr;
     memset(_csv, 0, _bufferSize);
-
-    if(_devices.size() == 0)
-    {
-        strcpy(_csv, ";;");
-        _network->publishPresenceDetection(_csv);
-        return;
-    }
 
     _csvIndex = 0;
     long ts = millis();
-    for(auto it : _devices)
     {
-        if(ts - _timeout < it.second.timestamp)
-        {
-            buildCsv(it.second);
-        }
+        std::lock_guard<std::mutex> lock(mtx);
 
-        // Prevent csv buffer overflow
-        if(_csvIndex > _bufferSize - (sizeof(it.second.name) + sizeof(it.second.address) + 10))
+        for (auto it: _devices)
         {
-            break;
+            if (ts - _timeout < it.second->timestamp)
+            {
+                buildCsv(it.second);
+            }
+
+            // Prevent csv buffer overflow
+            if (_csvIndex > _bufferSize - (sizeof(it.second->name) + sizeof(it.second->address) + 10))
+            {
+                break;
+            }
         }
     }
 
-    _csv[_csvIndex-1] = 0x00;
+    if(_csvIndex == 0)
+    {
+        strcpy(_csv, ";;");
+        return _csv;
+    }
 
-//    Log->print("Devices found: ");
-//    Log->println(_devices.size());
-    _network->publishPresenceDetection(_csv);
+    _csv[_csvIndex-1] = 0x00;
+    return _csv;
 }
 
 
-void PresenceDetection::buildCsv(const PdDevice &device)
+void PresenceDetection::buildCsv(const std::shared_ptr<PdDevice>& device)
 {
     for(int i = 0; i < 17; i++)
     {
-        _csv[_csvIndex] = device.address[i];
+        _csv[_csvIndex] = device->address[i];
         ++_csvIndex;
     }
     _csv[_csvIndex] = ';';
     ++_csvIndex;
 
     int i=0;
-    while(device.name[i] != 0x00 && i < sizeof(device.name))
+    while(device->name[i] != 0x00 && i < sizeof(device->name))
     {
-        _csv[_csvIndex] = device.name[i];
+        _csv[_csvIndex] = device->name[i];
         ++_csvIndex;
         ++i;
     }
@@ -100,10 +95,10 @@ void PresenceDetection::buildCsv(const PdDevice &device)
     _csv[_csvIndex] = ';';
     ++_csvIndex;
 
-    if(device.hasRssi)
+    if(device->hasRssi)
     {
         char rssiStr[20] = {0};
-        itoa(device.rssi, rssiStr, 10);
+        itoa(device->rssi, rssiStr, 10);
 
         int i=0;
         while(rssiStr[i] != 0x00 && i < 20)
@@ -140,24 +135,39 @@ void PresenceDetection::onResult(NimBLEAdvertisedDevice *device)
 
     long long addr = strtoll(addrArrComp, nullptr, 16);
 
-    auto it = _devices.find(addr);
-    if(it == _devices.end())
+    bool found;
     {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto it = _devices.find(addr);
+        found = (it != _devices.end());
 
-        PdDevice pdDevice;
+        if(found)
+        {
+            it->second->timestamp = millis();
+            if(device->haveRSSI())
+            {
+                it->second->hasRssi = true;
+                it->second->rssi = device->getRSSI();
+            }
+        }
+    }
+
+    if(!found)
+    {
+        std::shared_ptr<PdDevice> pdDevice = std::make_shared<PdDevice>();
 
         int i=0;
         size_t len = addressStr.length();
         while(i < len)
         {
-            pdDevice.address[i] = addressStr.at(i);
+            pdDevice->address[i] = addressStr.at(i);
             ++i;
         }
 
         if(device->haveRSSI())
         {
-            pdDevice.hasRssi = true;
-            pdDevice.rssi = device->getRSSI();
+            pdDevice->hasRssi = true;
+            pdDevice->rssi = device->getRSSI();
         }
 
         std::string nameStr = "-";
@@ -167,15 +177,18 @@ void PresenceDetection::onResult(NimBLEAdvertisedDevice *device)
 
             i=0;
             len = nameStr.length();
-            while(i < len && i < sizeof(pdDevice.name)-1)
+            while(i < len && i < sizeof(pdDevice->name)-1)
             {
-                pdDevice.name[i] = nameStr.at(i);
+                pdDevice->name[i] = nameStr.at(i);
                 ++i;
             }
 
-            pdDevice.timestamp = millis();
+            pdDevice->timestamp = millis();
 
-            _devices[addr] = pdDevice;
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                _devices[addr] = pdDevice;
+            }
         }
         else if (device->haveManufacturerData())
         {
@@ -189,22 +202,34 @@ void PresenceDetection::onResult(NimBLEAdvertisedDevice *device)
                 BLEBeacon oBeacon = BLEBeacon();
                 oBeacon.setData(strManufacturerData);
 
-                if(ENDIAN_CHANGE_U16(oBeacon.getMinor()) == 40004)
-                {
-                    pdDevice.timestamp = millis();
-                    strcpy(pdDevice.name, oBeacon.getProximityUUID().toString().c_str());
-                    _devices[addr] = pdDevice;
-                }
+//                if(ENDIAN_CHANGE_U16(oBeacon.getMinor()) == 40004)
+//                {
+                    pdDevice->timestamp = millis();
+                    strcpy(pdDevice->name, oBeacon.getProximityUUID().toString().c_str());
+                    {
+                        std::lock_guard<std::mutex> lock(mtx);
+                        _devices[addr] = pdDevice;
+                    }
+//                }
             }
         }
-    }
-    else
-    {
-        it->second.timestamp = millis();
-        if(device->haveRSSI())
+        else
         {
-            it->second.hasRssi = true;
-            it->second.rssi = device->getRSSI();
+            std::string nameStr = "-";
+            i=0;
+            len = nameStr.length();
+            while(i < len && i < sizeof(pdDevice->name)-1)
+            {
+                pdDevice->name[i] = nameStr.at(i);
+                ++i;
+            }
+
+            pdDevice->timestamp = millis();
+
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                _devices[addr] = pdDevice;
+            }
         }
     }
 
@@ -220,4 +245,9 @@ void PresenceDetection::onResult(NimBLEAdvertisedDevice *device)
 //    }
 //    Log->println();
 
+}
+
+bool PresenceDetection::enabled()
+{
+    return _timeout > 0;
 }

@@ -4,23 +4,33 @@
 #include "networkDevices/WifiDevice.h"
 #include "Logger.h"
 #include "Config.h"
-#include <ArduinoJson.h>
 #include "RestartReason.h"
 #if defined(CONFIG_IDF_TARGET_ESP32)
 #include "networkDevices/EthLan8720Device.h"
 #endif
 
-NukiNetwork* NukiNetwork::_inst = nullptr;
+#ifndef NUKI_HUB_UPDATER
+#include <ArduinoJson.h>
+
 unsigned long NukiNetwork::_ignoreSubscriptionsTs = 0;
 bool _versionPublished = false;
+#endif
+
+NukiNetwork* NukiNetwork::_inst = nullptr;
 
 RTC_NOINIT_ATTR char WiFi_fallbackDetect[14];
 
-NukiNetwork::NukiNetwork(Preferences *preferences, Gpio* gpio, const String& maintenancePathPrefix, char* buffer, size_t bufferSize)
+#ifndef NUKI_HUB_UPDATER
+NukiNetwork::NukiNetwork(Preferences *preferences, PresenceDetection* presenceDetection, Gpio* gpio, const String& maintenancePathPrefix, char* buffer, size_t bufferSize)
 : _preferences(preferences),
+  _presenceDetection(presenceDetection),
   _gpio(gpio),
   _buffer(buffer),
   _bufferSize(bufferSize)
+#else
+NukiNetwork::NukiNetwork(Preferences *preferences)
+: _preferences(preferences)    
+#endif
 {
     // Remove obsolete W5500 hardware detection configuration
     if(_preferences->getInt(preference_network_hardware_gpio) != 0)
@@ -31,6 +41,7 @@ NukiNetwork::NukiNetwork(Preferences *preferences, Gpio* gpio, const String& mai
     _inst = this;
     _hostname = _preferences->getString(preference_hostname);
 
+    #ifndef NUKI_HUB_UPDATER
     memset(_maintenancePathPrefix, 0, sizeof(_maintenancePathPrefix));
     size_t len = maintenancePathPrefix.length();
     for(int i=0; i < len; i++)
@@ -47,6 +58,7 @@ NukiNetwork::NukiNetwork(Preferences *preferences, Gpio* gpio, const String& mai
     {
         _mqttConnectionStateTopic[i] = connectionStateTopic.charAt(i);
     }
+    #endif
 
     setupDevice();
 }
@@ -116,7 +128,7 @@ void NukiNetwork::setupDevice()
                 Log->println(F("GL-S10"));
                 _networkDeviceType = NetworkDeviceType::GL_S10;
                 break;
-            #endif      
+            #endif
             default:
                 Log->println(F("Unknown hardware selected, falling back to Wi-Fi."));
                 _networkDeviceType = NetworkDeviceType::WiFi;
@@ -145,7 +157,7 @@ void NukiNetwork::setupDevice()
         case NetworkDeviceType::LilyGO_T_ETH_POE:
             _device = new EthLan8720Device(_hostname, _preferences, _ipConfiguration, "LilyGO T-ETH-POE", 0, -1, ETH_PHY_MDC, ETH_PHY_MDIO, ETH_PHY_TYPE, ETH_CLOCK_GPIO17_OUT);
             break;
-        #endif      
+        #endif
         case NetworkDeviceType::WiFi:
             _device = new WifiDevice(_hostname, _preferences, _ipConfiguration);
             break;
@@ -154,6 +166,7 @@ void NukiNetwork::setupDevice()
             break;
     }
 
+    #ifndef NUKI_HUB_UPDATER
     _device->mqttOnConnect([&](bool sessionPresent)
         {
             onMqttConnect(sessionPresent);
@@ -162,8 +175,67 @@ void NukiNetwork::setupDevice()
         {
             onMqttDisconnect(reason);
         });
+    #endif
 }
 
+void NukiNetwork::reconfigureDevice()
+{
+    _device->reconfigure();
+}
+
+const String NukiNetwork::networkDeviceName() const
+{
+    return _device->deviceName();
+}
+
+const String NukiNetwork::networkBSSID() const
+{
+    return _device->BSSIDstr();
+}
+
+const NetworkDeviceType NukiNetwork::networkDeviceType()
+{
+    return _networkDeviceType;
+}
+
+void NukiNetwork::setKeepAliveCallback(std::function<void()> reconnectTick)
+{
+    _keepAliveCallback = reconnectTick;
+}
+
+void NukiNetwork::clearWifiFallback()
+{
+    memset(WiFi_fallbackDetect, 0, sizeof(WiFi_fallbackDetect));
+}
+
+NetworkDevice *NukiNetwork::device()
+{
+    return _device;
+}
+
+#ifdef NUKI_HUB_UPDATER
+void NukiNetwork::initialize()
+{
+    _hostname = _preferences->getString(preference_hostname);
+
+    if(_hostname == "")
+    {
+        _hostname = "nukihub";
+        _preferences->putString(preference_hostname, _hostname);
+    }
+    strcpy(_hostnameArr, _hostname.c_str());
+    _device->initialize();
+
+    Log->print(F("Host name: "));
+    Log->println(_hostname);
+}
+
+bool NukiNetwork::update()
+{
+    _device->update();
+    return true;
+}
+#else
 void NukiNetwork::initialize()
 {
     _restartOnDisconnect = _preferences->getBool(preference_restart_on_disconnect, false);
@@ -340,15 +412,17 @@ bool NukiNetwork::update()
 
     _lastConnectedTs = ts;
 
-    if(_presenceCsv != nullptr && strlen(_presenceCsv) > 0)
+    if(_presenceDetection != nullptr && (_lastPresenceTs == 0 || (ts - _lastPresenceTs) > 3000))
     {
-        bool success = publishString(_mqttPresencePrefix, mqtt_topic_presence, _presenceCsv);
+        char* presenceCsv = _presenceDetection->generateCsv();
+        bool success = publishString(_mqttPresencePrefix, mqtt_topic_presence, presenceCsv);
         if(!success)
         {
             Log->println(F("Failed to publish presence CSV data."));
-            Log->println(_presenceCsv);
+            Log->println(presenceCsv);
         }
-        _presenceCsv = nullptr;
+
+        _lastPresenceTs = ts;
     }
 
     if(_device->signalStrength() != 127 && _rssiPublishInterval > 0 && ts - _lastRssiTs > _rssiPublishInterval)
@@ -367,7 +441,7 @@ bool NukiNetwork::update()
     {
         publishULong(_maintenancePathPrefix, mqtt_topic_uptime, ts / 1000 / 60);
         publishString(_maintenancePathPrefix, mqtt_topic_mqtt_connection_state, "online");
-        
+
         if(_publishDebugInfo)
         {
             publishUInt(_maintenancePathPrefix, mqtt_topic_freeheap, esp_get_free_heap_size());
@@ -679,11 +753,6 @@ void NukiNetwork::gpioActionCallback(const GpioAction &action, const int &pin)
     _gpioTs[pin] = millis();
 }
 
-void NukiNetwork::reconfigureDevice()
-{
-    _device->reconfigure();
-}
-
 void NukiNetwork::setMqttPresencePath(char *path)
 {
     memset(_mqttPresencePrefix, 0, sizeof(_mqttPresencePrefix));
@@ -704,16 +773,6 @@ int NukiNetwork::mqttConnectionState()
 bool NukiNetwork::encryptionSupported()
 {
     return _device->supportsEncryption();
-}
-
-const String NukiNetwork::networkDeviceName() const
-{
-    return _device->deviceName();
-}
-
-const String NukiNetwork::networkBSSID() const
-{
-    return _device->BSSIDstr();
 }
 
 void NukiNetwork::publishFloat(const char* prefix, const char* topic, const float value, const uint8_t precision, bool retain)
@@ -1107,7 +1166,6 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      { {(char*)"unit_of_meas", (char*)"dBm"} });
 }
-
 
 void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, const char *baseTopic, char *name, char *uidString)
 {
@@ -3572,24 +3630,9 @@ void NukiNetwork::timeZoneIdToString(const Nuki::TimeZoneId timeZoneId, char* st
   }
 }
 
-void NukiNetwork::publishPresenceDetection(char *csv)
-{
-    _presenceCsv = csv;
-}
-
-const NetworkDeviceType NukiNetwork::networkDeviceType()
-{
-    return _networkDeviceType;
-}
-
 uint16_t NukiNetwork::subscribe(const char *topic, uint8_t qos)
 {
     return _device->mqttSubscribe(topic, qos);
-}
-
-void NukiNetwork::setKeepAliveCallback(std::function<void()> reconnectTick)
-{
-    _keepAliveCallback = reconnectTick;
 }
 
 void NukiNetwork::addReconnectedCallback(std::function<void()> reconnectedCallback)
@@ -3597,18 +3640,9 @@ void NukiNetwork::addReconnectedCallback(std::function<void()> reconnectedCallba
     _reconnectedCallbacks.push_back(reconnectedCallback);
 }
 
-void NukiNetwork::clearWifiFallback()
-{
-    memset(WiFi_fallbackDetect, 0, sizeof(WiFi_fallbackDetect));
-}
-
 void NukiNetwork::disableMqtt()
 {
     _device->disableMqtt();
     _mqttEnabled = false;
 }
-
-NetworkDevice *NukiNetwork::device()
-{
-    return _device;
-}
+#endif

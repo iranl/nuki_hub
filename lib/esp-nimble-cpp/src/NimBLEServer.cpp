@@ -215,7 +215,9 @@ void NimBLEServer::start() {
         if(svc->m_removed == 0) {
             rc = ble_gatts_find_svc(&svc->getUUID().getNative()->u, &svc->m_handle);
             if(rc != 0) {
-                abort();
+                NIMBLE_LOGW(LOG_TAG, "GATT Server started without service: %s, Service %s",
+                            svc->getUUID().toString().c_str(), svc->isStarted() ? "missing" : "not started");
+                continue; // Skip this service as it was not started
             }
         }
 
@@ -252,6 +254,15 @@ int NimBLEServer::disconnect(uint16_t connId, uint8_t reason) {
     return rc;
 } // disconnect
 
+/**
+ * @brief Disconnect the specified client with optional reason.
+ * @param [in] connInfo Connection of the client to disconnect.
+ * @param [in] reason code for disconnecting.
+ * @return NimBLE host return code.
+ */
+int NimBLEServer::disconnect(const NimBLEConnInfo &connInfo, uint8_t reason) {
+    return disconnect(connInfo.getConnHandle(), reason);
+} // disconnect
 
 #if !CONFIG_BT_NIMBLE_EXT_ADV || defined(_DOXYGEN_)
 /**
@@ -262,6 +273,7 @@ void NimBLEServer::advertiseOnDisconnect(bool aod) {
     m_advertiseOnDisconnect = aod;
 } // advertiseOnDisconnect
 #endif
+
 
 /**
  * @brief Return the number of connected clients.
@@ -518,6 +530,16 @@ int NimBLEServer::handleGapEvent(struct ble_gap_event *event, void *arg) {
             return 0;
         } // BLE_GAP_EVENT_ENC_CHANGE
 
+        case BLE_GAP_EVENT_IDENTITY_RESOLVED: {
+            rc = ble_gap_conn_find(event->identity_resolved.conn_handle, &peerInfo.m_desc);
+            if(rc != 0) {
+                return BLE_ATT_ERR_INVALID_HANDLE;
+            }
+
+            pServer->m_pServerCallbacks->onIdentity(peerInfo);
+            return 0;
+        } // BLE_GAP_EVENT_IDENTITY_RESOLVED
+
         case BLE_GAP_EVENT_PASSKEY_ACTION: {
             struct ble_sm_io pkey = {0,0};
 
@@ -528,19 +550,20 @@ int NimBLEServer::handleGapEvent(struct ble_gap_event *event, void *arg) {
                 // if the (static)passkey is the default, check the callback for custom value
                 // both values default to the same.
                 if(pkey.passkey == 123456) {
-                    pkey.passkey = pServer->m_pServerCallbacks->onPassKeyRequest();
+                    pkey.passkey = pServer->m_pServerCallbacks->onPassKeyDisplay();
                 }
                 rc = ble_sm_inject_io(event->passkey.conn_handle, &pkey);
                 NIMBLE_LOGD(LOG_TAG, "BLE_SM_IOACT_DISP; ble_sm_inject_io result: %d", rc);
 
             } else if (event->passkey.params.action == BLE_SM_IOACT_NUMCMP) {
                 NIMBLE_LOGD(LOG_TAG, "Passkey on device's display: %" PRIu32, event->passkey.params.numcmp);
-                pkey.action = event->passkey.params.action;
-                pkey.numcmp_accept = pServer->m_pServerCallbacks->onConfirmPIN(event->passkey.params.numcmp);
 
-                rc = ble_sm_inject_io(event->passkey.conn_handle, &pkey);
-                NIMBLE_LOGD(LOG_TAG, "BLE_SM_IOACT_NUMCMP; ble_sm_inject_io result: %d", rc);
+                rc = ble_gap_conn_find(event->passkey.conn_handle, &peerInfo.m_desc);
+                if(rc != 0) {
+                    return BLE_ATT_ERR_INVALID_HANDLE;
+                }
 
+                pServer->m_pServerCallbacks->onConfirmPIN(peerInfo, event->passkey.params.numcmp);
             //TODO: Handle out of band pairing
             } else if (event->passkey.params.action == BLE_SM_IOACT_OOB) {
                 static uint8_t tem_oob[16] = {0};
@@ -551,14 +574,6 @@ int NimBLEServer::handleGapEvent(struct ble_gap_event *event, void *arg) {
                 rc = ble_sm_inject_io(event->passkey.conn_handle, &pkey);
                 NIMBLE_LOGD(LOG_TAG, "BLE_SM_IOACT_OOB; ble_sm_inject_io result: %d", rc);
             //////////////////////////////////
-            } else if (event->passkey.params.action == BLE_SM_IOACT_INPUT) {
-                NIMBLE_LOGD(LOG_TAG, "Enter the passkey");
-                pkey.action = event->passkey.params.action;
-                pkey.passkey = pServer->m_pServerCallbacks->onPassKeyRequest();
-
-                rc = ble_sm_inject_io(event->passkey.conn_handle, &pkey);
-                NIMBLE_LOGD(LOG_TAG, "BLE_SM_IOACT_INPUT; ble_sm_inject_io result: %d", rc);
-
             } else if (event->passkey.params.action == BLE_SM_IOACT_NONE) {
                 NIMBLE_LOGD(LOG_TAG, "No passkey action required");
             }
@@ -851,18 +866,22 @@ void NimBLEServerCallbacks::onMTUChange(uint16_t MTU, NimBLEConnInfo& connInfo) 
     NIMBLE_LOGD("NimBLEServerCallbacks", "onMTUChange(): Default");
 } // onMTUChange
 
-uint32_t NimBLEServerCallbacks::onPassKeyRequest(){
-    NIMBLE_LOGD("NimBLEServerCallbacks", "onPassKeyRequest: default: 123456");
+uint32_t NimBLEServerCallbacks::onPassKeyDisplay(){
+    NIMBLE_LOGD("NimBLEServerCallbacks", "onPassKeyDisplay: default: 123456");
     return 123456;
-} //onPassKeyRequest
+} //onPassKeyDisplay
 
-void NimBLEServerCallbacks::onAuthenticationComplete(NimBLEConnInfo& connInfo){
+void NimBLEServerCallbacks::onConfirmPIN(const NimBLEConnInfo& connInfo, uint32_t pin){
+    NIMBLE_LOGD("NimBLEServerCallbacks", "onConfirmPIN: default: true");
+    NimBLEDevice::injectConfirmPIN(connInfo, true);
+} // onConfirmPIN
+
+void NimBLEServerCallbacks::onIdentity(const NimBLEConnInfo& connInfo){
+    NIMBLE_LOGD("NimBLEServerCallbacks", "onIdentity: default");
+} // onIdentity
+
+void NimBLEServerCallbacks::onAuthenticationComplete(const NimBLEConnInfo& connInfo){
     NIMBLE_LOGD("NimBLEServerCallbacks", "onAuthenticationComplete: default");
 } // onAuthenticationComplete
-
-bool NimBLEServerCallbacks::onConfirmPIN(uint32_t pin){
-    NIMBLE_LOGD("NimBLEServerCallbacks", "onConfirmPIN: default: true");
-    return true;
-} // onConfirmPIN
 
 #endif /* CONFIG_BT_ENABLED && CONFIG_BT_NIMBLE_ROLE_PERIPHERAL */

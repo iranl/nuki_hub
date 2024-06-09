@@ -15,10 +15,12 @@ Feel free to join us on Discord: https://discord.gg/9nPq85bP4p
 ## Supported devices
 
 <b>Supported ESP32 devices:</b>
-- All ESP32 models with WIFI and BLE which are supported by ESP-IDF 5.1 and Arduino Core 3.0.1 should work. Tested builds are provided for the ESP32, ESP32-S3, ESP32-C6 and ESP32-C3.
+- Nuki Hub is compiled against all ESP32 models with WIFI and BLE which are supported by ESP-IDF 5.1 and Arduino Core 3.0.1.
+- Tested stable builds are provided for the ESP32, ESP32-S3 and ESP32-C3.
+- Support for the ESP32-C6 is ***HIGHLY*** experimental. Expect frequent crashes, especially when running Nuki Hub paired as an app (when not using in Hybrid mode). Pairing is also not supported yet and needs to be done manually on the /advanced page of the web configurator.
 
 <b>Not supported ESP32 devices:</b>
-- The ESP32-Solo1 is not supported by ESP-IDF 5.1 and as such is not supported anymore from Nuki Hub 8.36 up
+- The ESP32-Solo1 is not supported by ESP-IDF 5.1 and as such is not supported anymore starting with Nuki Hub 8.36.
 - The ESP32-S2 has no BLE and as such can't run Nuki Hub.
 - The ESP32-H2 has no WiFI and Nuki Hub is not compiled against this target because of this (at this time).
 
@@ -617,6 +619,7 @@ If the W5500 hwardware isn't detected, Wi-Fi is used as a fallback.<br>
 <br>
 Note: Encrypted MQTT is only available for Wi-Fi and LAN8720 modules, W5x00 modules don't support encryption<br>
 (that leaves Olimex, WT32-ETH01 and M5Stack PoESP32 Unit if encryption is desired).<br>
+Note: LAN8720 modules are only supported on the ESP32, not on the ESP32-S3, ESP32-C3 or ESP-C6<br>
 <br>
 If encryption is needed, Olimex is the easiest option, since it has USB for flashing onboard.
 
