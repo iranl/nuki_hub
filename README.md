@@ -41,7 +41,7 @@ As an alternative to Wi-Fi (which is available on any supported ESP32), the foll
 - [M5Stack Atom POE](https://docs.m5stack.com/en/atom/atom_poe)
 - [M5Stack PoESP32 Unit](https://docs.m5stack.com/en/unit/poesp32)
 - [LilyGO-T-ETH-POE](https://github.com/Xinyuan-LilyGO/LilyGO-T-ETH-POE)
-- [GL-S10](https://www.gl-inet.com/products/gl-s10/)
+- [GL-S10 (Revisions 2.1, 2.3 / 1.0 is not supported)](https://www.gl-inet.com/products/gl-s10/)
 
 <b>Note for users upgrading from Nuki Hub 8.21 or lower:</b><br>
 Please go to "MQTT and Network Configuration" and select "Wi-Fi only" as the network device (unless you use other network hardware).
@@ -92,7 +92,7 @@ See [hybrid mode](/HYBRID.md) for more information.
 ## Support
 
 If you haven't ordered your Nuki product yet, you can support me by using my referrer code when placing your order:<br>
-REFXH49NT9NGP<br>
+REF2P8WSFGJCN<br>
 This will also give you a 10% discount on your order.<br>
 <br>
 This project is free to use for everyone. However if you feel like donating, you can buy me a coffee at ko-fi.com:<br>
@@ -706,33 +706,18 @@ See the [README](/Docker/README.md) in the Docker directory for instructions on 
 <b>Platform IO, instructions for Debian-based Linux distro (e.g. Ubuntu)</b><br>
 ```console
 apt-get update
-apt-get install -y git python3 pip
+apt-get install -y git python3 pip make
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade platformio
-pip install --upgrade esptool
+
 git clone https://github.com/technyon/nuki_hub --recursive
 cd nuki_hub
-mkdir -p release/esp32
-mkdir -p release/esp32s3
-mkdir -p release/esp32c3
-mkdir -p release/esp32solo1
-pio run --environment esp32dev
-cp .pio/build/esp32dev/bootloader.bin release/esp32/bootloader.bin
-cp .pio/build/esp32dev/firmware.bin release/esp32/nuki_hub_esp32.bin
-cp .pio/build/esp32dev/partitions.bin release/esp32/nuki_hub.partitions.bin
-pio run --environment esp32-s3
-cp .pio/build/esp32-s3/bootloader.bin release/esp32s3/bootloader.bin
-cp .pio/build/esp32-s3/firmware.bin release/esp32s3/nuki_hub_esp32s3.bin
-cp .pio/build/esp32-s3/partitions.bin release/esp32s3/nuki_hub.partitions.bin
-pio run --environment esp32-c3
-cp .pio/build/esp32-c3/bootloader.bin release/esp32c3/bootloader.bin
-cp .pio/build/esp32-c3/firmware.bin release/esp32c3/nuki_hub_esp32c3.bin
-cp .pio/build/esp32-c3/partitions.bin release/esp32c3/nuki_hub.partitions.bin
-pio run --environment esp32solo1
-cp .pio/build/esp32solo1/bootloader.bin release/esp32solo1/bootloader.bin
-cp .pio/build/esp32solo1/firmware.bin release/esp32solo1/nuki_hub_esp32solo1.bin
-cp .pio/build/esp32solo1/partitions.bin release/esp32solo1/nuki_hub.partitions.bin
+
+# install tools platformio and esptool 
+make deps
+
+# build all binary boards
+make release
 ```
 <br>
 <b>VMWare image (Not preferred, not using the latest Arduino ESP32 release at this time)</b><br>

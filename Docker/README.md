@@ -9,4 +9,4 @@ cd nuki_hub/Docker
 ./build_with_docker_pio.sh
 ```
 
-once the script is complete you will find the nuki_hub binaries in the `nuki_hub/build_pio` folder.
+once the script is complete you will find the nuki_hub binaries in the `nuki_hub/release` folder.

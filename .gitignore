@@ -14,3 +14,7 @@ webflash/*.bin
 managed_components
 dependencies.lock
 sdkconfig.esp32*
+# Python venv
+/pyvenv.cfg
+/lib64
+/lib/python3*
