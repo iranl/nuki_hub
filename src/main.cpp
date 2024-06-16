@@ -1,6 +1,10 @@
 #include "Arduino.h"
 #include "hardware/W5500EthServer.h"
 #include "hardware/WifiEthServer.h"
+#include "esp_crt_bundle.h"
+#include "esp_ota_ops.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
 
 #ifndef NUKI_HUB_UPDATER
 #include "NukiWrapper.h"
@@ -32,6 +36,8 @@ bool openerEnabled = false;
 TaskHandle_t nukiTaskHandle = nullptr;
 TaskHandle_t presenceDetectionTaskHandle = nullptr;
 
+unsigned long restartTs = (2^32) - 5 * 60000;
+
 #else
 #include "../../src/WebCfgServer.h"
 #include "../../src/Logger.h"
@@ -39,6 +45,9 @@ TaskHandle_t presenceDetectionTaskHandle = nullptr;
 #include "../../src/Config.h"
 #include "../../src/RestartReason.h"
 #include "../../src/NukiNetwork.h"
+
+unsigned long restartTs = 10 * 60000;
+
 #endif
 
 NukiNetwork* network = nullptr;
@@ -46,14 +55,13 @@ WebCfgServer* webCfgServer = nullptr;
 Preferences* preferences = nullptr;
 EthServer* ethServer = nullptr;
 
-unsigned long restartTs = (2^32) - 5 * 60000;
-
 RTC_NOINIT_ATTR int restartReason;
 RTC_NOINIT_ATTR uint64_t restartReasonValidDetect;
 RTC_NOINIT_ATTR bool rebuildGpioRequested;
 bool restartReason_isValid;
 RestartReason currentRestartReason = RestartReason::NotApplicable;
 
+TaskHandle_t otaTaskHandle = nullptr;
 TaskHandle_t networkTaskHandle = nullptr;
 
 void networkTask(void *pvParameters)
@@ -116,14 +124,106 @@ void nukiTask(void *pvParameters)
 }
 #endif
 
-void setupTasks()
+uint8_t checkPartition()
+{
+    const esp_partition_t* running_partition = esp_ota_get_running_partition();
+    Log->print(F("Partition size: "));
+    Log->println(running_partition->size);
+    Log->print(F("Partition subtype: "));
+    Log->println(running_partition->subtype);
+
+    if(running_partition->size == 1966080) return 0; //OLD PARTITION TABLE
+    else if(running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) return 1; //NEW PARTITION TABLE, RUNNING MAIN APP
+    else return 2; //NEW PARTITION TABLE, RUNNING UPDATER APP
+}
+
+esp_err_t _http_event_handler(esp_http_client_event_t *evt)
+{
+    switch (evt->event_id) {
+        case HTTP_EVENT_ERROR:
+            Log->println("HTTP_EVENT_ERROR");
+            break;
+        case HTTP_EVENT_ON_CONNECTED:
+            Log->println("HTTP_EVENT_ON_CONNECTED");
+            break;
+        case HTTP_EVENT_HEADER_SENT:
+            Log->println("HTTP_EVENT_HEADER_SENT");
+            break;
+        case HTTP_EVENT_ON_HEADER:
+            Log->println("HTTP_EVENT_ON_HEADER");
+            break;
+        case HTTP_EVENT_ON_DATA:
+            Log->println("HTTP_EVENT_ON_DATA");
+            break;
+        case HTTP_EVENT_ON_FINISH:
+            Log->println("HTTP_EVENT_ON_FINISH");
+            break;
+        case HTTP_EVENT_DISCONNECTED:
+            Log->println("HTTP_EVENT_DISCONNECTED");
+            break;
+        case HTTP_EVENT_REDIRECT:
+            Log->println("HTTP_EVENT_REDIRECT");
+            break;
+    }
+    return ESP_OK;
+}
+
+void otaTask(void *pvParameter)
+{
+    uint8_t partitionType = checkPartition();
+    String updateUrl;
+
+    if(partitionType==1)
+    {
+        updateUrl = preferences->getString(preference_ota_updater_url);
+        preferences->putString(preference_ota_updater_url, "");
+    }
+    else
+    {
+        updateUrl = preferences->getString(preference_ota_main_url);
+        preferences->putString(preference_ota_main_url, "");
+    }
+    Log->print(F("URL: "));
+    Log->println(updateUrl.c_str());
+    Log->println("Starting OTA task");
+    esp_http_client_config_t config = {
+        .url = updateUrl.c_str(),
+        .event_handler = _http_event_handler,
+        .crt_bundle_attach = esp_crt_bundle_attach,
+        .keep_alive_enable = true,
+    };
+
+    esp_https_ota_config_t ota_config = {
+        .http_config = &config,
+    };
+    Log->print(F("Attempting to download update from "));
+    Log->println(config.url);
+    esp_err_t ret = esp_https_ota(&ota_config);
+    if (ret == ESP_OK) {
+        Log->println("OTA Succeeded, Rebooting...");
+        esp_ota_set_boot_partition(esp_ota_get_next_update_partition(NULL));
+        restartEsp(RestartReason::OTACompleted);
+    } else {
+        Log->println("Firmware upgrade failed");
+        restartEsp(RestartReason::OTAAborted);
+    }
+    while (1) {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+}
+
+void setupTasks(bool ota)
 {
     // configMAX_PRIORITIES is 25
 
-    xTaskCreatePinnedToCore(networkTask, "ntw", preferences->getInt(preference_task_size_network, NETWORK_TASK_SIZE), NULL, 3, &networkTaskHandle, 1);
-    #ifndef NUKI_HUB_UPDATER
-    xTaskCreatePinnedToCore(nukiTask, "nuki", preferences->getInt(preference_task_size_nuki, NUKI_TASK_SIZE), NULL, 2, &nukiTaskHandle, 1);
-    #endif
+    if(ota) xTaskCreatePinnedToCore(otaTask, "ota", 8192, NULL, 2, &otaTaskHandle, 1);
+    else
+    {
+        xTaskCreatePinnedToCore(networkTask, "ntw", preferences->getInt(preference_task_size_network, NETWORK_TASK_SIZE), NULL, 3, &networkTaskHandle, 1);
+        #ifndef NUKI_HUB_UPDATER
+        xTaskCreatePinnedToCore(nukiTask, "nuki", preferences->getInt(preference_task_size_nuki, NUKI_TASK_SIZE), NULL, 2, &nukiTaskHandle, 1);
+        #endif
+    }
 }
 
 void initEthServer(const NetworkDeviceType device)
@@ -257,15 +357,6 @@ bool initPreferences()
     #endif
 }
 
-uint8_t checkPartition()
-{
-    const esp_partition_t* running_partition = esp_ota_get_running_partition();
-
-    if(running_partition->size == 1966080) return 0; //OLD PARTITION TABLE
-    else if(running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) return 1; //NEW PARTITION TABLE, RUNNING MAIN APP
-    else return 2; //NEW PARTITION TABLE, RUNNING UPDATER APP
-}
-
 void setup()
 {
     Serial.begin(115200);
@@ -283,7 +374,7 @@ void setup()
     network = new NukiNetwork(preferences);
     network->initialize();
     initEthServer(network->networkDeviceType());
-    webCfgServer = new WebCfgServer(network, ethServer, preferences, network->networkDeviceType() == NetworkDeviceType::WiFi);
+    webCfgServer = new WebCfgServer(network, ethServer, preferences, network->networkDeviceType() == NetworkDeviceType::WiFi, partitionType);
     webCfgServer->initialize();
     #else
     Log->print(F("Nuki Hub version ")); Log->println(NUKI_HUB_VERSION);
@@ -360,7 +451,7 @@ void setup()
         networkOpener = new NukiNetworkOpener(network, preferences, CharBuffer::get(), buffer_size);
         networkOpener->initialize();
     }
-    
+
     initEthServer(network->networkDeviceType());
 
     Log->println(lockEnabled ? F("Nuki Lock enabled") : F("Nuki Lock disabled"));
@@ -384,7 +475,8 @@ void setup()
     }
     #endif
 
-    setupTasks();
+    if((partitionType==1 && preferences->getString(preference_ota_updater_url).length() > 0) || (partitionType==2 && preferences->getString(preference_ota_main_url).length() > 0)) setupTasks(true);
+    else setupTasks(false);
 }
 
 void loop()
