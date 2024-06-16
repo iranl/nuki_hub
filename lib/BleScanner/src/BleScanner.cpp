@@ -39,6 +39,7 @@ void Scanner::initialize(const std::string& deviceName, const bool wantDuplicate
   #endif
   bleScan->setInterval(interval);
   bleScan->setWindow(window);
+  bleScan->setActiveScan(false);
 }
 
 void Scanner::update() {
