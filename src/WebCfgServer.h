@@ -36,7 +36,7 @@ public:
     #ifndef NUKI_HUB_UPDATER
     WebCfgServer(NukiWrapper* nuki, NukiOpenerWrapper* nukiOpener, NukiNetwork* network, Gpio* gpio, EthServer* ethServer, Preferences* preferences, bool allowRestartToPortal, uint8_t partitionType);
     #else
-    WebCfgServer(NukiNetwork* network, EthServer* ethServer, Preferences* preferences, bool allowRestartToPortal);    
+    WebCfgServer(NukiNetwork* network, EthServer* ethServer, Preferences* preferences, bool allowRestartToPortal, uint8_t partitionType);    
     #endif
     ~WebCfgServer() = default;
 

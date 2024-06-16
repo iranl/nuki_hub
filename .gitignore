@@ -15,6 +15,7 @@ managed_components
 dependencies.lock
 sdkconfig.esp32*
 sdkconfig.updater_esp32*
+updater/src/main.cpp
 # Python venv
 /pyvenv.cfg
 /lib64

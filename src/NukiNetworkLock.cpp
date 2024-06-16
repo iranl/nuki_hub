@@ -1,6 +1,7 @@
 #include "NukiNetworkLock.h"
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 #include "Arduino.h"
+#include "Config.h"
 #include "MqttTopics.h"
 #include "PreferencesKeys.h"
 #include "Logger.h"
@@ -63,8 +64,14 @@ void NukiNetworkLock::initialize()
     _network->initTopic(_mqttPath, mqtt_topic_config_action, "--");
     _network->subscribe(_mqttPath, mqtt_topic_config_action);
 
-    _network->subscribe(_mqttPath, mqtt_topic_reset);
-    _network->initTopic(_mqttPath, mqtt_topic_reset, "0");
+    if(_preferences->getBool(preference_update_from_mqtt, false))
+    {
+        _network->subscribe(_mqttPath, mqtt_topic_reset);
+        _network->initTopic(_mqttPath, mqtt_topic_reset, "0");
+    }
+
+    _network->subscribe(_mqttPath, mqtt_topic_update);
+    _network->initTopic(_mqttPath, mqtt_topic_update, "0");
 
     _network->subscribe(_mqttPath, mqtt_topic_webserver_action);
     _network->initTopic(_mqttPath, mqtt_topic_webserver_action, "--");
@@ -177,6 +184,14 @@ void NukiNetworkLock::onMqttDataReceived(const char* topic, byte* payload, const
         _network->clearWifiFallback();
         delay(200);
         restartEsp(RestartReason::RequestedViaMqtt);
+    }
+    else if(comparePrefixedPath(topic, mqtt_topic_update) && strcmp(value, "1") == 0 && _preferences->getBool(preference_update_from_mqtt, false))
+    {
+        Log->println(F("Update requested via MQTT."));
+        _preferences->putString(preference_ota_updater_url, GITHUB_LATEST_UPDATER_BINARY_URL);
+        _preferences->putString(preference_ota_main_url, GITHUB_LATEST_RELEASE_BINARY_URL);
+        delay(200);
+        restartEsp(RestartReason::OTAReboot);
     }
     else if(comparePrefixedPath(topic, mqtt_topic_webserver_action))
     {
@@ -1047,7 +1062,7 @@ void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entr
             _network->removeTopic(codeTopic, "createdSec");
             _network->removeTopic(codeTopic, "lockCount");
         }
-        
+
         for(int j=entries.size(); j<maxKeypadCodeCount; j++)
         {
             String codesTopic = _mqttPath;
@@ -1199,13 +1214,13 @@ void NukiNetworkLock::publishTimeControl(const std::list<NukiLock::TimeControlEn
                                { (char*)"stat_on", (char*)"1" },
                                { (char*)"stat_off", (char*)"0" }});
         }
-        
+
         ++index;
     }
 
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_timecontrol_json, _buffer);
-    
+
     for(int j=timeControlEntries.size(); j<maxTimeControlEntryCount; j++)
     {
         String entriesTopic = _mqttPath;

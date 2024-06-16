@@ -20,6 +20,7 @@
 #else
 #if defined(FRAMEWORK_ARDUINO_SOLO1)
 #define GITHUB_LATEST_RELEASE_BINARY_URL (char*)"https://github.com/technyon/nuki_hub/raw/master/ota/nuki_hub_esp32solo1.bin"
+#define GITHUB_LATEST_UPDATER_BINARY_URL (char*)"https://github.com/technyon/nuki_hub/raw/master/ota/nuki_hub_updater_esp32solo1.bin"
 #else
 #define GITHUB_LATEST_RELEASE_BINARY_URL "https://github.com/technyon/nuki_hub/raw/master/ota/nuki_hub_esp32.bin"
 #define GITHUB_LATEST_UPDATER_BINARY_URL (char*)"https://github.com/technyon/nuki_hub/raw/master/ota/nuki_hub_updater_esp32.bin"

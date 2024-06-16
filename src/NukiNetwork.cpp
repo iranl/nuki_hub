@@ -352,12 +352,16 @@ bool NukiNetwork::update()
 {
     unsigned long ts = millis();
 
-    if(ts > 120000 && ts < 125000 && _preferences->getInt(preference_bootloop_counter, 0) > 0)
+    if(ts > 120000 && ts < 125000)
     {
-        _preferences->putInt(preference_bootloop_counter, 0);
-        Log->println(F("Bootloop counter reset"));
+        if(_preferences->getBool(preference_show_secrets, false)) _preferences->putBool(preference_show_secrets, false);
+        
+        if(_preferences->getInt(preference_bootloop_counter, 0) > 0)
+        {
+            _preferences->putInt(preference_bootloop_counter, 0);
+            Log->println(F("Bootloop counter reset"));
+        }
     }
-
     _device->update();
 
     if(!_mqttEnabled)
@@ -1059,23 +1063,47 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
         _lockPath.toCharArray(latest_version_topic,_lockPath.length() + 1);
         strcat(latest_version_topic, mqtt_topic_info_nuki_hub_latest);
 
-        publishHassTopic("update",
-                         "nuki_hub_update",
-                         uidString,
-                         "_nuki_hub_update",
-                         "NUKI Hub firmware update",
-                         name,
-                         baseTopic,
-                         _lockPath + mqtt_topic_info_nuki_hub_version,
-                         deviceType,
-                         "firmware",
-                         "",
-                         "diagnostic",
-                         "",
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
-                           { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
-                           { (char*)"l_ver_t", (char*)latest_version_topic }});
+        if(!_preferences->getBool(preference_update_from_mqtt, false))
+        {
+            publishHassTopic("update",
+                             "nuki_hub_update",
+                             uidString,
+                             "_nuki_hub_update",
+                             "NUKI Hub firmware update",
+                             name,
+                             baseTopic,
+                             _lockPath + mqtt_topic_info_nuki_hub_version,
+                             deviceType,
+                             "firmware",
+                             "",
+                             "diagnostic",
+                             "",
+                             { { (char*)"en", (char*)"true" },
+                               { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
+                               { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
+                               { (char*)"l_ver_t", (char*)latest_version_topic }});
+        }
+        else
+        {
+            publishHassTopic("update",
+                             "nuki_hub_update",
+                             uidString,
+                             "_nuki_hub_update",
+                             "NUKI Hub firmware update",
+                             name,
+                             baseTopic,
+                             _lockPath + mqtt_topic_info_nuki_hub_version,
+                             deviceType,
+                             "firmware",
+                             "",
+                             "diagnostic",
+                             _lockPath + mqtt_topic_update,
+                             { { (char*)"en", (char*)"true" },
+                               { (char*)"pl_inst", (char*)"1" },                             
+                               { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
+                               { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
+                               { (char*)"l_ver_t", (char*)latest_version_topic }});
+        }        
     }
     else
     {
