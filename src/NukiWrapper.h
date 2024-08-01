@@ -37,6 +37,7 @@ public:
     const bool isPaired() const;
     const bool hasKeypad() const;
     bool hasDoorSensor() const;
+    bool offConnected();
     const BLEAddress getBleAddress() const;
 
     std::string firmwareVersion() const;
@@ -127,13 +128,14 @@ private:
     int _retryConfigCount = 0;
     int _retryLockstateCount = 0;
     int _rssiPublishInterval = 0;
-    int64_t _nextRetryTs = 0;    
+    int64_t _statusUpdatedTs = 0;
+    int64_t _nextRetryTs = 0;
     int64_t _nextLockStateUpdateTs = 0;
     int64_t _nextHybridLockStateUpdateTs = 0;
     int64_t _nextBatteryReportTs = 0;
     int64_t _nextConfigUpdateTs = 0;
     int64_t _waitAuthLogUpdateTs = 0;
-    int64_t _waitKeypadUpdateTs = 0;    
+    int64_t _waitKeypadUpdateTs = 0;
     int64_t _waitTimeControlUpdateTs = 0;
     int64_t _nextTimeUpdateTs = 0;
     int64_t _nextKeypadUpdateTs = 0;

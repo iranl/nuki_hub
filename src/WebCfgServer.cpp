@@ -314,6 +314,7 @@ void WebCfgServer::initialize()
         String response = "";
         buildConfirmHtml(response, "Rebooting to other partition", 2);
         _server.send(200, "text/html", response);
+        waitAndProcess(true, 1000);
         esp_ota_set_boot_partition(esp_ota_get_next_update_partition(NULL));
         restartEsp(RestartReason::OTAReboot);
     });
@@ -343,6 +344,7 @@ void WebCfgServer::initialize()
             _preferences->putString(preference_ota_main_url, GITHUB_LATEST_RELEASE_BINARY_URL);
         }
         _server.send(200, "text/html", response);
+        waitAndProcess(true, 1000);
         restartEsp(RestartReason::OTAReboot);
     });
     #endif
@@ -418,15 +420,17 @@ void WebCfgServer::buildOtaHtml(String &response, bool errored)
     response.concat("Click on the button to reboot and automatically update Nuki Hub and the Nuki Hub updater to the latest versions from GitHub");
     response.concat("<div style=\"clear: both\"></div>");
     response.concat("<form onsubmit=\"return confirm('Do you really want to update to the latest release?');\" action=\"/autoupdate\" method=\"get\" style=\"float: left; margin-right: 10px\"><br><input type=\"submit\" style=\"background: green\" value=\"Update to latest release\"></form>");
-    response.concat("<form onsubmit=\"return confirm('Do you really want to update to the latest beta? This version could contain breaking bugs and necessitate downgrading to the latest release version using USB/Serial');\" action=\"/autoupdate?beta\" method=\"get\" style=\"float: left; margin-right: 10px\"><br><input type=\"submit\" style=\"color: black; background: yellow\"  value=\"Update to latest beta\"></form>");
-    response.concat("<form onsubmit=\"return confirm('Do you really want to update to the latest development version? This version could contain breaking bugs and necessitate downgrading to the latest release version using USB/Serial');\" action=\"/autoupdate?master\" method=\"get\" style=\"float: left; margin-right: 10px\"><br><input type=\"submit\" style=\"background: red\"  value=\"Update to latest development version\"></form>");
+    response.concat("<form onsubmit=\"return confirm('Do you really want to update to the latest beta? This version could contain breaking bugs and necessitate downgrading to the latest release version using USB/Serial');\" action=\"/autoupdate\" method=\"get\" style=\"float: left; margin-right: 10px\"><input type=\"hidden\" name=\"beta\" value=\"1\" /><br><input type=\"submit\" style=\"color: black; background: yellow\"  value=\"Update to latest beta\"></form>");
+    response.concat("<form onsubmit=\"return confirm('Do you really want to update to the latest development version? This version could contain breaking bugs and necessitate downgrading to the latest release version using USB/Serial');\" action=\"/autoupdate\" method=\"get\" style=\"float: left; margin-right: 10px\"><input type=\"hidden\" name=\"master\" value=\"1\" /><br><input type=\"submit\" style=\"background: red\"  value=\"Update to latest development version\"></form>");
     response.concat("<div style=\"clear: both\"></div><br>");
 
     response.concat("<b>Current version: </b>");
     response.concat(NUKI_HUB_VERSION);
     response.concat(" (");
     response.concat(NUKI_HUB_BUILD);
-    response.concat(")<br>");
+    response.concat("), ");
+    response.concat(NUKI_HUB_DATE);
+    response.concat("<br>");
 
     #ifndef NUKI_HUB_UPDATER
     HTTPClient https;
@@ -445,15 +449,15 @@ void WebCfgServer::buildOtaHtml(String &response, bool errored)
         if (!jsonError)
         {
             response.concat("<b>Latest release version: </b>");
-            response.concat(doc["release"]["version"].as<const char*>());
+            response.concat(doc["release"]["fullversion"].as<const char*>());
             response.concat(" (");
             response.concat(doc["release"]["build"].as<const char*>());
             response.concat("), ");
             response.concat(doc["release"]["time"].as<const char*>());
             response.concat("<br>");
             response.concat("<b>Latest beta version: </b>");
-            response.concat(doc["beta"]["version"].as<const char*>());
-            if(doc["beta"]["version"] != "No beta available")
+            response.concat(doc["beta"]["fullversion"].as<const char*>());
+            if(doc["beta"]["fullversion"] != "No beta available")
             {
                 response.concat(" (");
                 response.concat(doc["beta"]["build"].as<const char*>());
@@ -462,7 +466,7 @@ void WebCfgServer::buildOtaHtml(String &response, bool errored)
             }
             response.concat("<br>");
             response.concat("<b>Latest development version: </b>");
-            response.concat(doc["master"]["version"].as<const char*>());
+            response.concat(doc["master"]["fullversion"].as<const char*>());
             response.concat(" (");
             response.concat(doc["master"]["build"].as<const char*>());
             response.concat("), ");
@@ -762,7 +766,7 @@ void WebCfgServer::sendSettings()
         }
     }
 
-    if(pairing && _preferences->getBool(preference_show_secrets))
+    if(pairing)
     {
         if(_nuki != nullptr)
         {
@@ -1018,6 +1022,11 @@ bool WebCfgServer::processArgs(String& message)
             _preferences->putBool(preference_restart_on_disconnect, (value == "1"));
             configChanged = true;
         }
+        else if(key == "RECNWTMQTTDIS")
+        {
+            _preferences->putBool(preference_recon_netw_on_mqtt_discon, (value == "1"));
+            configChanged = true;
+        }
         else if(key == "MQTTLOG")
         {
             _preferences->putBool(preference_mqtt_log_enabled, (value == "1"));
@@ -1114,6 +1123,14 @@ bool WebCfgServer::processArgs(String& message)
         {
             _preferences->putInt(preference_command_retry_delay, value.toInt());
             configChanged = true;
+        }
+        else if(key == "TXPWR")
+        {
+            if(value.toInt() >= -12 && value.toInt() <= 9)
+            {
+                _preferences->putInt(preference_ble_tx_power, value.toInt());
+                configChanged = true;
+            }
         }
 #if PRESENCE_DETECTION_ENABLED
         else if(key == "PRDTMO")
@@ -2015,6 +2032,12 @@ void WebCfgServer::buildHtml(String& response)
         {
             String lockState = pinStateToString(_preferences->getInt(preference_lock_pin_status, 4));
             printParameter(response, "Nuki Lock PIN status", lockState.c_str(), "", "lockPin");
+
+            if(_preferences->getBool(preference_official_hybrid, false))
+            {
+                String offConnected = _nuki->offConnected() ? "Yes": "No";
+                printParameter(response, "Nuki Lock hybrid mode connected", offConnected.c_str(), "", "lockHybrid");
+            }
         }
     }
     if(_nukiOpener != nullptr)
@@ -2180,6 +2203,7 @@ void WebCfgServer::buildMqttConfigHtml(String &response)
     printInputField(response, "RSSI", "RSSI Publish interval (seconds; -1 to disable)", _preferences->getInt(preference_rssi_publish_interval), 6, "");
     printInputField(response, "NETTIMEOUT", "MQTT Timeout until restart (seconds; -1 to disable)", _preferences->getInt(preference_network_timeout), 5, "");
     printCheckBox(response, "RSTDISC", "Restart on disconnect", _preferences->getBool(preference_restart_on_disconnect), "");
+    printCheckBox(response, "RECNWTMQTTDIS", "Reconnect network on MQTT connection failure", _preferences->getBool(preference_recon_netw_on_mqtt_discon), "");
     printCheckBox(response, "MQTTLOG", "Enable MQTT logging", _preferences->getBool(preference_mqtt_log_enabled), "");
     printCheckBox(response, "CHECKUPDATE", "Check for Firmware Updates every 24h", _preferences->getBool(preference_check_updates), "");
     printCheckBox(response, "UPDATEMQTT", "Allow updating using MQTT", _preferences->getBool(preference_update_from_mqtt), "");
@@ -2542,6 +2566,8 @@ void WebCfgServer::buildNukiConfigHtml(String &response)
     printInputField(response, "PRDTMO", "Presence detection timeout (seconds; -1 to disable)", _preferences->getInt(preference_presence_detection_timeout), 10, "");
 #endif
     printInputField(response, "RSBC", "Restart if bluetooth beacons not received (seconds; -1 to disable)", _preferences->getInt(preference_restart_ble_beacon_lost), 10, "");
+    printInputField(response, "TXPWR", "BLE transmit power in dB (minimum -12, maximum 9)", _preferences->getInt(preference_ble_tx_power, 9), 10, "");
+    
     response.concat("</table>");
     response.concat("<br><input type=\"submit\" name=\"submit\" value=\"Save\">");
     response.concat("</form>");

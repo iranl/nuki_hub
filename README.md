@@ -22,8 +22,8 @@ Feel free to join us on Discord: https://discord.gg/9nPq85bP4p
 <b>Supported ESP32 devices:</b>
 - Nuki Hub is compiled against all ESP32 models with Wi-Fi and Bluetooh Low Energy (BLE) which are supported by ESP-IDF 5.1.4 and Arduino Core 3.0.1.
 - Tested stable builds are provided for the ESP32, ESP32-S3 and ESP32-C3.
-- Support for the ESP32-C6 is ***HIGHLY*** experimental. Expect frequent crashes, especially when running Nuki Hub paired as an app (when not using in Hybrid mode). Pairing is also not supported yet and needs to be done manually on the /advanced page of the web configurator.
-- The ESP32-Solo1 is not supported by ESP-IDF 5.1 and as such can't be build using Arduino Core 3 and ESP-IDF 5.1. Untested build against Arduino Core 2.0.14 and ESP-IDF 4.4 are provided.
+- Support for the ESP32-C6 is experimental. There could be more frequent crashes than on other ESP32 devices and connections with the Nuki device could be slower than on other ESP32 devices.
+- The ESP32-Solo1 is not supported by ESP-IDF 5.1 and as such can't be build using Arduino Core 3 and ESP-IDF 5.1. Untested builds against Arduino Core 2.0.14 and ESP-IDF 4.4 are provided.
 
 <b>Not supported ESP32 devices:</b>
 - The ESP32-S2 has no BLE and as such can't run Nuki Hub.
@@ -128,6 +128,7 @@ In a browser navigate to the IP address assigned to the ESP32.
 - RSSI Publish interval: Set to a positive integer to set the amount of seconds between updates to the maintenance/wifiRssi MQTT topic with the current Wi-Fi RSSI, set to -1 to disable, default 60.
 - MQTT Timeout until restart: Set to a positive integer to restart the Nuki Hub after the set amount of seconds has passed without an active connection to the MQTT broker, set to -1 to disable, default 60.
 - Restart on disconnect: Enable to restart the Nuki Hub when disconnected from the network.
+- Reconnect network on MQTT connection failure: Enable to force reconnection to the network when connection to the MQTT broker fails (after 15 tries).
 - Enable MQTT logging: Enable to fill the maintenance/log MQTT topic with debug log information.
 - Check for Firmware Updates every 24h: Enable to allow the Nuki Hub to check the latest release of the Nuki Hub firmware on boot and every 24 hours. Requires the Nuki Hub to be able to connect to github.com. The latest version will be published to MQTT and will be visible on the main page of the Web Configurator.
 - Allow updating using MQTT: Enable to allow starting the Nuki Hub update process using MQTT. Will also enable the Home Assistant update functionality if auto discovery is enabled.
@@ -164,7 +165,7 @@ In a browser navigate to the IP address assigned to the ESP32.
 - Lock: Nuki Bridge is running alongside Nuki Hub: Enable to allow Nuki Hub to co-exist with a Nuki Bridge by registering Nuki Hub as an (smartphone) app instead of a bridge. Changing this setting will require re-pairing. Enabling this setting is strongly discouraged as described in the "[Pairing with a Nuki Lock or Opener](#pairing-with-a-nuki-lock-or-opener)" section of this README, ***unless when used in [Hybrid mode](/HYBRID.md) (Official MQTT / Nuki Hub co-existance)***
 - Opener: Nuki Bridge is running alongside Nuki Hub: Enable to allow Nuki Hub to co-exist with a Nuki Bridge by registering Nuki Hub as an (smartphone) app instead of a bridge. Changing this setting will require re-pairing. Enabling this setting is strongly discouraged as described in the "[Pairing with a Nuki Lock or Opener](#pairing-with-a-nuki-lock-or-opener)" section of this README
 - Restart if bluetooth beacons not received: Set to a positive integer to restart the Nuki Hub after the set amount of seconds has passed without receiving a bluetooth beacon from the Nuki device, set to -1 to disable, default 60. Because the bluetooth stack of the ESP32 can silently fail it is not recommended to disable this setting.
-
+- BLE transmit power in dB: Set to a integer between -12 and 9 to set the Bluetooth transmit power, default 9.
 ### Access Level Configuration
 
 #### Nuki General Access Control
@@ -440,8 +441,8 @@ After about a minute the new firmware should be installed afterwhich the ESP wil
 Selecting the wrong binary will lead to an unsuccessfull update<br>
 <br>
 <b> Note for users upgrading from Nuki Hub 8.35 or lower:</b><br>
-Updating to version 8.36 requires a change to the partition table of the ESP32.<br>
-Please follow the instructions for the [First time installation](#first-time-installation) once when updating to Nuki Hub 8.36 from an earlier version.<br>
+Updating to version 9.00 requires a change to the partition table of the ESP32.<br>
+Please follow the instructions for the [First time installation](#first-time-installation) once when updating to Nuki Hub 9.00 from an earlier version.<br>
 Your settings will not be affected when updating using the above instructions (do not select erase device when updating using Webflash).<br>
 
 ## MQTT Encryption (optional; Wi-Fi and LAN8720 only)

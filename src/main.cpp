@@ -76,14 +76,19 @@ TaskHandle_t networkTaskHandle = nullptr;
 void networkTask(void *pvParameters)
 {
     int64_t networkLoopTs = 0;
+    bool secrets = preferences->getBool(preference_show_secrets);
 
     while(true)
     {
         int64_t ts = (esp_timer_get_time() / 1000);
-        if(ts > 120000 && ts < 125000 && bootloopCounter > 0)
+        if(ts > 120000 && ts < 125000)
         {
-            bootloopCounter = (int8_t)0;
-            Log->println(F("Bootloop counter reset"));
+            if(secrets) preferences->putBool(preference_show_secrets, false);
+            if(bootloopCounter > 0)
+            {
+                bootloopCounter = (int8_t)0;
+                Log->println(F("Bootloop counter reset"));
+            }
         }
 
         bool connected = network->update();
@@ -118,6 +123,7 @@ void networkTask(void *pvParameters)
 void nukiTask(void *pvParameters)
 {
     int64_t nukiLoopTs = 0;
+    bool whiteListed = false;
 
     while(true)
     {
@@ -130,6 +136,20 @@ void nukiTask(void *pvParameters)
         {
             delay(5000);
         }
+        #ifndef PRESENCE_DETECTION_ENABLED
+        else if (!whiteListed)
+        {
+            whiteListed = true;
+            if(lockEnabled)
+            {
+                bleScanner->whitelist(nuki->getBleAddress());
+            }
+            if(openerEnabled)
+            {
+                bleScanner->whitelist(nukiOpener->getBleAddress());
+            }
+        }
+        #endif
 
         if(lockEnabled)
         {
@@ -315,7 +335,7 @@ void setupTasks(bool ota)
         xTaskCreatePinnedToCore(networkTask, "ntw", preferences->getInt(preference_task_size_network, NETWORK_TASK_SIZE), NULL, 3, &networkTaskHandle, 1);
         esp_task_wdt_add(networkTaskHandle);
         #ifndef NUKI_HUB_UPDATER
-        xTaskCreatePinnedToCore(nukiTask, "nuki", preferences->getInt(preference_task_size_nuki, NUKI_TASK_SIZE), NULL, 2, &nukiTaskHandle, 1);
+        xTaskCreatePinnedToCore(nukiTask, "nuki", preferences->getInt(preference_task_size_nuki, NUKI_TASK_SIZE), NULL, 2, &nukiTaskHandle, 0);
         esp_task_wdt_add(nukiTaskHandle);
         #endif
     }
@@ -399,7 +419,7 @@ void setup()
     // Scan interval and window according to Nuki recommendations:
     // https://developer.nuki.io/t/bluetooth-specification-questions/1109/27
     bleScanner->initialize("NukiHub", true, 40, 40);
-    bleScanner->setScanDuration(10);
+    bleScanner->setScanDuration(0);
 
 #if PRESENCE_DETECTION_ENABLED
     if(preferences->getInt(preference_presence_detection_timeout) >= 0)
