@@ -154,6 +154,7 @@ private:
     const char* _lastWillPayload = "offline";
     char _mqttConnectionStateTopic[211] = {0};
     String _lockPath;
+    String _totpKey;
 
     PresenceDetection* _presenceDetection;
     Gpio* _gpio;
@@ -178,11 +179,14 @@ private:
     bool _firstConnect = true;
     bool _publishDebugInfo = false;
     bool _logIp = true;
+    bool _totpEnabled = false;
     std::vector<String> _subscribedTopics;
+    std::vector<String*> _validTOTPCodes;
     std::map<String, String> _initTopics;
     int64_t _lastConnectedTs = 0;
     int64_t _lastMaintenanceTs = 0;
     int64_t _lastUpdateCheckTs = 0;
+    int64_t _lastUpdateTOTPTs = 0;
     #if PRESENCE_DETECTION_ENABLED
     int64_t _lastPresenceTs = 0;
     #endif

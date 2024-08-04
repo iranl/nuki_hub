@@ -10,6 +10,8 @@
 #endif
 
 #ifndef NUKI_HUB_UPDATER
+#include <time.h>
+#include <TOTP-RC6236-generator.hpp>
 #include <ArduinoJson.h>
 bool _versionPublished = false;
 #endif
@@ -238,6 +240,8 @@ void NukiNetwork::initialize()
 {
     _restartOnDisconnect = _preferences->getBool(preference_restart_on_disconnect, false);
     _checkUpdates = _preferences->getBool(preference_check_updates, false);
+    _totpKey = _preferences->getString(preference_totp_secret, "");
+    _totpEnabled = _totpKey.length() > 0;
     _reconnectNetworkOnMqttDisconnect = _preferences->getBool(preference_recon_netw_on_mqtt_discon, false);
     _rssiPublishInterval = _preferences->getInt(preference_rssi_publish_interval) * 1000;
 
@@ -429,7 +433,7 @@ bool NukiNetwork::update()
         delay(2000);
         return false;
     }
-
+    
     _lastConnectedTs = ts;
 
 #if PRESENCE_DETECTION_ENABLED
@@ -531,6 +535,38 @@ bool NukiNetwork::update()
         }
     }
 
+    if(_totpEnabled && (_lastUpdateTOTPTs == 0 || (ts - _lastUpdateTOTPTs) > 30000))
+    {
+        time_t now;
+        time(&now);
+        
+        if(_validTOTPCodes.size() != 5)
+        {
+            _validTOTPCodes.clear();
+            _validTOTPCodes.push_back(TOTP::currentOTP(now, _totpKey, 30, 6, -60));
+            _validTOTPCodes.push_back(TOTP::currentOTP(now, _totpKey, 30, 6, -30));
+            _validTOTPCodes.push_back(TOTP::currentOTP(now, _totpKey, 30, 6, 0));
+            _validTOTPCodes.push_back(TOTP::currentOTP(now, _totpKey, 30, 6, 30));
+            _validTOTPCodes.push_back(TOTP::currentOTP(now, _totpKey, 30, 6, 60));
+            _lastUpdateTOTPTs = ts;
+        }
+        else
+        {
+            String* nextCode = TOTP::currentOTP(now, _totpKey, 30, 6, 60);
+            
+            if(nextCode != _validTOTPCodes[4])
+            {
+                _validTOTPCodes.erase(_validTOTPCodes.begin());
+                _validTOTPCodes.push_back(nextCode);
+                _lastUpdateTOTPTs = ts;
+            }
+            else
+            {
+                _lastUpdateTOTPTs = ts - 20000;
+            }
+        }
+    }
+    
     return true;
 }
 
@@ -3245,6 +3281,19 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
 
     if((int)advancedOpenerConfigAclPrefs[19] == 1)
     {
+        String plOn = "{ \"automaticBatteryTypeDetection\": \"1\"";
+        String plOff = "{ \"automaticBatteryTypeDetection\": \"0\"";
+        if(_totpEnabled && _totpSensor.length() > 0)
+        {
+            plOn.concat(" \"totp\": \"" + _totpSensor "\"}");
+            plOff.concat(" \"totp\": \"" + _totpSensor "\"}");            
+        }
+        else
+        {
+            plOn.concat("}");
+            plOff.concat("}");
+        }
+        
         // Automatic battery type detection
         publishHassTopic("switch",
                          "automatic_battery_type_detection",
@@ -3260,8 +3309,8 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "config",
                          String("~") + mqtt_topic_config_action,
                          { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"automaticBatteryTypeDetection\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"automaticBatteryTypeDetection\": \"0\"}" },
+                           { (char*)"pl_on", (char*)plOn.c_str() },
+                           { (char*)"pl_off", (char*)plOff.c_str() },
                            { (char*)"val_tpl", (char*)"{{value_json.automaticBatteryTypeDetection}}" },
                            { (char*)"stat_on", (char*)"1" },
                            { (char*)"stat_off", (char*)"0" }});

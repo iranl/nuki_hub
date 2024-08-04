@@ -61,11 +61,16 @@
 #define preference_timecontrol_info_enabled (char*)"tcInfoEnabled"
 #define preference_publish_authdata (char*)"pubAuth"
 #define preference_acl (char*)"aclLckOpn"
+#define preference_acl_totp (char*)"aclLckOpnTOTP"
 #define preference_conf_info_enabled (char*)"cnfInfoEnabled"
 #define preference_conf_lock_basic_acl (char*)"confLckBasAcl"
+#define preference_conf_lock_basic_acl_totp (char*)"confLckBasTOTP"
 #define preference_conf_lock_advanced_acl (char*)"confLckAdvAcl"
+#define preference_conf_lock_advanced_acl_totp (char*)"confLckAdvTOTP"
 #define preference_conf_opener_basic_acl (char*)"confOpnBasAcl"
+#define preference_conf_opener_basic_acl_totp (char*)"confOpnBasTOTP"
 #define preference_conf_opener_advanced_acl (char*)"confOpnAdvAcl"
+#define preference_conf_opener_advanced_acl_totp (char*)"confOpnAdvTOTP"
 #define preference_register_as_app (char*)"regAsApp" // true = register as hub; false = register as app
 #define preference_register_opener_as_app (char*)"regOpnAsApp"
 #define preference_command_nr_of_retries (char*)"nrRetry"
@@ -127,6 +132,12 @@ inline bool initPreferences(Preferences* preferences)
         preferences->putBytes(preference_conf_lock_advanced_acl, (byte*)(&advancedLockConfigAclPrefs), sizeof(advancedLockConfigAclPrefs));
         uint32_t advancedOpenerConfigAclPrefs[20] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
         preferences->putBytes(preference_conf_opener_advanced_acl, (byte*)(&advancedOpenerConfigAclPrefs), sizeof(advancedOpenerConfigAclPrefs));
+        uint32_t aclPrefsTOTP[17] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+        preferences->putBytes(preference_acl_totp, (byte*)(&aclPrefsTOTP), sizeof(aclPrefsTOTP));
+        preferences->putBytes(preference_conf_lock_basic_acl_totp, (byte*)(&basicLockConfigAclPrefs), sizeof(basicLockConfigAclPrefs));
+        preferences->putBytes(preference_conf_opener_basic_acl_totp, (byte*)(&basicOpenerConfigAclPrefs), sizeof(basicOpenerConfigAclPrefs));
+        preferences->putBytes(preference_conf_lock_advanced_acl_totp, (byte*)(&advancedLockConfigAclPrefs), sizeof(advancedLockConfigAclPrefs));
+        preferences->putBytes(preference_conf_opener_advanced_acl_totp, (byte*)(&advancedOpenerConfigAclPrefs), sizeof(advancedOpenerConfigAclPrefs));
     }
     else
     {
@@ -273,7 +284,8 @@ private:
     std::vector<char*> _bytePrefs =
     {
             preference_acl, preference_conf_info_enabled, preference_conf_lock_basic_acl, preference_conf_lock_advanced_acl, preference_conf_opener_basic_acl,
-            preference_conf_opener_advanced_acl, preference_gpio_configuration
+            preference_conf_opener_advanced_acl, preference_gpio_configuration, preference_acl_totp, preference_conf_lock_basic_acl_totp,
+            preference_conf_lock_advanced_acl_totp, preference_conf_opener_basic_acl_totp, preference_conf_opener_advanced_acl_totp
     };
     std::vector<char*> _intPrefs =
     {
