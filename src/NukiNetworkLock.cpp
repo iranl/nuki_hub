@@ -40,7 +40,7 @@ NukiNetworkLock::~NukiNetworkLock()
 
 void NukiNetworkLock::initialize()
 {
-    String mqttPath = _preferences->getString(preference_mqtt_lock_path);
+    String mqttPath = _preferences->getString(preference_mqtt_lock_path, "");
     if(mqttPath.length() > 0)
     {
         size_t len = mqttPath.length();
@@ -55,11 +55,13 @@ void NukiNetworkLock::initialize()
         _preferences->putString(preference_mqtt_lock_path, _mqttPath);
     }
 
-#if PRESENCE_DETECTION_ENABLED
+    #if PRESENCE_DETECTION_ENABLED
     _network->setMqttPresencePath(_mqttPath);
-#endif
+    #endif
 
-    _haEnabled = _preferences->getString(preference_mqtt_hass_discovery) != "";
+    _haEnabled = _preferences->getString(preference_mqtt_hass_discovery, "") != "";
+    _disableNonJSON = _preferences->getBool(preference_disable_non_json, false);
+    _offEnabled = _preferences->getBool(preference_official_hybrid, false);
 
     _network->initTopic(_mqttPath, mqtt_topic_lock_action, "--");
     _network->subscribe(_mqttPath, mqtt_topic_lock_action);
@@ -71,10 +73,8 @@ void NukiNetworkLock::initialize()
 
     if(_preferences->getBool(preference_update_from_mqtt, false))
     {
-        #if (ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(5, 0, 0))
         _network->subscribe(_mqttPath, mqtt_topic_update);
         _network->initTopic(_mqttPath, mqtt_topic_update, "0");
-        #endif
     }
 
     _network->subscribe(_mqttPath, mqtt_topic_webserver_action);
@@ -88,7 +88,7 @@ void NukiNetworkLock::initialize()
     _network->subscribe(_mqttPath, mqtt_topic_query_lockstate);
     _network->subscribe(_mqttPath, mqtt_topic_query_battery);
 
-    if(_preferences->getBool(preference_disable_non_json, false))
+    if(_disableNonJSON)
     {
         _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_action);
         _network->removeTopic(_mqttPath, mqtt_topic_keypad_command_id);
@@ -127,7 +127,7 @@ void NukiNetworkLock::initialize()
 
     if(_preferences->getBool(preference_keypad_control_enabled))
     {
-        if(!_preferences->getBool(preference_disable_non_json, false))
+        if(!_disableNonJSON)
         {
             _network->subscribe(_mqttPath, mqtt_topic_keypad_command_action);
             _network->subscribe(_mqttPath, mqtt_topic_keypad_command_id);
@@ -153,7 +153,7 @@ void NukiNetworkLock::initialize()
         _network->initTopic(_mqttPath, mqtt_topic_timecontrol_action, "--");
     }
 
-    if(_preferences->getBool(preference_official_hybrid, false))
+    if(_offEnabled)
     {
         char uidString[20];
         itoa(_preferences->getUInt(preference_nuki_id_lock, 0), uidString, 16);
@@ -195,16 +195,34 @@ void NukiNetworkLock::onMqttDataReceived(const char* topic, byte* payload, const
         delay(200);
         restartEsp(RestartReason::RequestedViaMqtt);
     }
-    #if (ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(5, 0, 0))
     else if(comparePrefixedPath(topic, mqtt_topic_update) && strcmp(value, "1") == 0 && _preferences->getBool(preference_update_from_mqtt, false))
     {
         Log->println(F("Update requested via MQTT."));
-        _preferences->putString(preference_ota_updater_url, GITHUB_LATEST_UPDATER_BINARY_URL);
-        _preferences->putString(preference_ota_main_url, GITHUB_LATEST_RELEASE_BINARY_URL);
+        String currentVersion = NUKI_HUB_VERSION;
+        
+        if(atof(_preferences->getString(preference_latest_version).c_str()) >= atof(currentVersion.c_str()))
+        {
+            _preferences->putString(preference_ota_updater_url, GITHUB_LATEST_UPDATER_BINARY_URL);
+            _preferences->putString(preference_ota_main_url, GITHUB_LATEST_RELEASE_BINARY_URL);
+        }
+        else if(currentVersion.indexOf("beta") > 0)
+        {
+            _preferences->putString(preference_ota_updater_url, GITHUB_BETA_RELEASE_BINARY_URL);
+            _preferences->putString(preference_ota_main_url, GITHUB_BETA_UPDATER_BINARY_URL);
+        }
+        else if(currentVersion.indexOf("master") > 0)
+        {
+            _preferences->putString(preference_ota_updater_url, GITHUB_MASTER_RELEASE_BINARY_URL);
+            _preferences->putString(preference_ota_main_url, GITHUB_MASTER_UPDATER_BINARY_URL);
+        }
+        else
+        {
+            _preferences->putString(preference_ota_updater_url, GITHUB_LATEST_UPDATER_BINARY_URL);
+            _preferences->putString(preference_ota_main_url, GITHUB_LATEST_RELEASE_BINARY_URL);
+        }
         delay(200);
         restartEsp(RestartReason::OTAReboot);
     }
-    #endif
     else if(comparePrefixedPath(topic, mqtt_topic_webserver_action))
     {
         if(strcmp(value, "") == 0 ||
@@ -237,7 +255,7 @@ void NukiNetworkLock::onMqttDataReceived(const char* topic, byte* payload, const
         if(atoi(value) > 0 && atoi(value) > _lastRollingLog) _lastRollingLog = atoi(value);
     }
 
-    if(_preferences->getBool(preference_official_hybrid, false))
+    if(_offEnabled)
     {
         for(auto offTopic : _offTopics)
         {
@@ -285,7 +303,7 @@ void NukiNetworkLock::onMqttDataReceived(const char* topic, byte* payload, const
         }
     }
 
-    if(!_preferences->getBool(preference_disable_non_json, false))
+    if(!_disableNonJSON)
     {
         if(comparePrefixedPath(topic, mqtt_topic_keypad_command_action))
         {
@@ -499,14 +517,14 @@ void NukiNetworkLock::publishKeyTurnerState(const NukiLock::KeyTurnerState& keyT
         jsonBattery["level"] = level;
         jsonBattery["keypadCritical"] = keypadCritical ? "1" : "0";
 
-        if((_firstTunerStatePublish || keyTurnerState.criticalBatteryState != lastKeyTurnerState.criticalBatteryState) && !_preferences->getBool(preference_disable_non_json, false))
+        if((_firstTunerStatePublish || keyTurnerState.criticalBatteryState != lastKeyTurnerState.criticalBatteryState) && !_disableNonJSON)
         {
             publishBool(mqtt_topic_battery_critical, critical, true);
             publishBool(mqtt_topic_battery_charging, charging, true);
             publishInt(mqtt_topic_battery_level, level, true);
         }
 
-        if((_firstTunerStatePublish || keyTurnerState.accessoryBatteryState != lastKeyTurnerState.accessoryBatteryState) && !_preferences->getBool(preference_disable_non_json, false))
+        if((_firstTunerStatePublish || keyTurnerState.accessoryBatteryState != lastKeyTurnerState.accessoryBatteryState) && !_disableNonJSON)
         {
             publishBool(mqtt_topic_battery_keypad_critical, keypadCritical, true);
         }
@@ -720,7 +738,7 @@ void NukiNetworkLock::publishLockstateCommandResult(const char *resultStr)
 
 void NukiNetworkLock::publishBatteryReport(const NukiLock::BatteryReport& batteryReport)
 {
-    if(!_preferences->getBool(preference_disable_non_json, false))
+    if(!_disableNonJSON)
     {
         publishFloat(mqtt_topic_battery_voltage, (float)batteryReport.batteryVoltage / 1000.0, true);
         publishInt(mqtt_topic_battery_drain, batteryReport.batteryDrain, true); // milliwatt seconds
@@ -802,7 +820,7 @@ void NukiNetworkLock::publishConfig(const NukiLock::Config &config)
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_config_basic_json, _buffer, true);
 
-    if(!_preferences->getBool(preference_disable_non_json, false))
+    if(!_disableNonJSON)
     {
         publishBool(mqtt_topic_config_button_enabled, config.buttonEnabled == 1, true);
         publishBool(mqtt_topic_config_led_enabled, config.ledEnabled == 1, true);
@@ -857,7 +875,7 @@ void NukiNetworkLock::publishAdvancedConfig(const NukiLock::AdvancedConfig &conf
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_config_advanced_json, _buffer, true);
 
-    if(!_preferences->getBool(preference_disable_non_json, false))
+    if(!_disableNonJSON)
     {
         publishBool(mqtt_topic_config_auto_unlock, config.autoUnLockDisabled == 0, true);
         publishBool(mqtt_topic_config_auto_lock, config.autoLockEnabled == 1, true);
@@ -881,6 +899,8 @@ void NukiNetworkLock::publishBleAddress(const std::string &address)
 
 void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entries, uint maxKeypadCodeCount)
 {
+    bool publishCode = _preferences->getBool(preference_keypad_publish_code, false);
+    bool topicPerEntry = _preferences->getBool(preference_keypad_topic_per_entry, false);
     uint index = 0;
     char uidString[20];
     itoa(_preferences->getUInt(preference_nuki_id_lock, 0), uidString, 16);
@@ -898,11 +918,7 @@ void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entr
 
         jsonEntry["codeId"] = entry.codeId;
 
-        if(_preferences->getBool(preference_keypad_publish_code, false))
-        {
-            jsonEntry["code"] = entry.code;
-        }
-
+        if(publishCode) jsonEntry["code"] = entry.code;
         jsonEntry["enabled"] = entry.enabled;
         jsonEntry["name"] = entry.name;
         char createdDT[20];
@@ -975,7 +991,7 @@ void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entr
         sprintf(allowedUntilTimeT, "%02d:%02d", entry.allowedUntilTimeHour, entry.allowedUntilTimeMin);
         jsonEntry["allowedUntilTime"] = allowedUntilTimeT;
 
-        if(_preferences->getBool(preference_keypad_topic_per_entry, false))
+        if(topicPerEntry)
         {
             basePath = mqtt_topic_keypad;
             basePath.concat("/codes/");
@@ -1026,7 +1042,7 @@ void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entr
     serializeJson(json, _buffer, _bufferSize);
     publishString(mqtt_topic_keypad_json, _buffer, true);
 
-    if(!_preferences->getBool(preference_disable_non_json, false))
+    if(!_disableNonJSON)
     {
         while(index < maxKeypadCodeCount)
         {
@@ -1040,7 +1056,7 @@ void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entr
             ++index;
         }
 
-        if(!_preferences->getBool(preference_keypad_publish_code, false))
+        if(!publishCode)
         {
             for(int i=0; i<maxKeypadCodeCount; i++)
             {
@@ -1091,7 +1107,7 @@ void NukiNetworkLock::publishKeypad(const std::list<NukiLock::KeypadEntry>& entr
 
 void NukiNetworkLock::publishKeypadEntry(const String topic, NukiLock::KeypadEntry entry)
 {
-    if(_preferences->getBool(preference_disable_non_json, false)) return;
+    if(_disableNonJSON) return;
 
     char codeName[sizeof(entry.name) + 1];
     memset(codeName, 0, sizeof(codeName));
@@ -1117,6 +1133,7 @@ void NukiNetworkLock::publishKeypadEntry(const String topic, NukiLock::KeypadEnt
 
 void NukiNetworkLock::publishTimeControl(const std::list<NukiLock::TimeControlEntry>& timeControlEntries, uint maxTimeControlEntryCount)
 {
+    bool topicPerEntry = _preferences->getBool(preference_timecontrol_topic_per_entry, false);
     uint index = 0;
     char str[50];
     char uidString[20];
@@ -1186,7 +1203,7 @@ void NukiNetworkLock::publishTimeControl(const std::list<NukiLock::TimeControlEn
         NukiLock::lockactionToString(entry.lockAction, str);
         jsonEntry["lockAction"] = str;
 
-        if(_preferences->getBool(preference_timecontrol_topic_per_entry, false))
+        if(topicPerEntry)
         {
             String basePath = mqtt_topic_timecontrol;
             basePath.concat("/entries/");
@@ -1251,7 +1268,7 @@ void NukiNetworkLock::publishConfigCommandResult(const char* result)
 
 void NukiNetworkLock::publishKeypadCommandResult(const char* result)
 {
-    if(_preferences->getBool(preference_disable_non_json, false)) return;
+    if(_disableNonJSON) return;
     publishString(mqtt_topic_keypad_command_result, result, true);
 }
 
@@ -1287,7 +1304,7 @@ void NukiNetworkLock::setConfigUpdateReceivedCallback(void (*configUpdateReceive
 
 void NukiNetworkLock::setKeypadCommandReceivedCallback(void (*keypadCommandReceivedReceivedCallback)(const char* command, const uint& id, const String& name, const String& code, const int& enabled))
 {
-    if(_preferences->getBool(preference_disable_non_json, false)) return;
+    if(_disableNonJSON) return;
     _keypadCommandReceivedReceivedCallback = keypadCommandReceivedReceivedCallback;
 }
 

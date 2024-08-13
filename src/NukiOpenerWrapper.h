@@ -128,7 +128,6 @@ private:
     bool _keypadEnabled = false;
     uint _maxKeypadCodeCount = 0;
     uint _maxTimeControlEntryCount = 0;
-    bool _configRead = false;
     int _rssiPublishInterval = 0;
     int64_t _nextLockStateUpdateTs = 0;
     int64_t _nextBatteryReportTs = 0;
@@ -141,6 +140,8 @@ private:
     int64_t _nextRssiTs = 0;
     int64_t _lastRssi = 0;
     int64_t _disableBleWatchdogTs = 0;
+    uint32_t _basicOpenerConfigAclPrefs[16];
+    uint32_t _advancedOpenerConfigAclPrefs[20];
     std::string _firmwareVersion = "";
     std::string _hardwareVersion = "";
     NukiOpener::LockAction _nextLockAction = (NukiOpener::LockAction)0xff;

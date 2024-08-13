@@ -5,6 +5,8 @@
 #include "Logger.h"
 #include "Config.h"
 #include "RestartReason.h"
+#include <HTTPClient.h>
+#include <NetworkClientSecure.h>
 #if defined(CONFIG_IDF_TARGET_ESP32)
 #include "networkDevices/EthLan8720Device.h"
 #endif
@@ -13,7 +15,6 @@
 #include <time.h>
 #include <TOTP-RC6236-generator.hpp>
 #include <ArduinoJson.h>
-bool _versionPublished = false;
 #endif
 
 NukiNetwork* NukiNetwork::_inst = nullptr;
@@ -216,7 +217,7 @@ NetworkDevice *NukiNetwork::device()
 #ifdef NUKI_HUB_UPDATER
 void NukiNetwork::initialize()
 {
-    _hostname = _preferences->getString(preference_hostname);
+    _hostname = _preferences->getString(preference_hostname, "");
 
     if(_hostname == "")
     {
@@ -243,9 +244,9 @@ void NukiNetwork::initialize()
     _totpKey = _preferences->getString(preference_totp_secret, "");
     _totpEnabled = _totpKey.length() > 0;
     _reconnectNetworkOnMqttDisconnect = _preferences->getBool(preference_recon_netw_on_mqtt_discon, false);
-    _rssiPublishInterval = _preferences->getInt(preference_rssi_publish_interval) * 1000;
-
-    _hostname = _preferences->getString(preference_hostname);
+    _rssiPublishInterval = _preferences->getInt(preference_rssi_publish_interval, 0) * 1000;
+    _hostname = _preferences->getString(preference_hostname, "");
+    _discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery, "");
 
     if(_hostname == "")
     {
@@ -254,8 +255,8 @@ void NukiNetwork::initialize()
     }
     if(_rssiPublishInterval == 0)
     {
-        _rssiPublishInterval = 60;
-        _preferences->putInt(preference_rssi_publish_interval, _rssiPublishInterval);
+        _rssiPublishInterval = 60000;
+        _preferences->putInt(preference_rssi_publish_interval, 60);
     }
     strcpy(_hostnameArr, _hostname.c_str());
     _device->initialize();
@@ -266,7 +267,7 @@ void NukiNetwork::initialize()
     String brokerAddr = _preferences->getString(preference_mqtt_broker);
     strcpy(_mqttBrokerAddr, brokerAddr.c_str());
 
-    int port = _preferences->getInt(preference_mqtt_broker_port);
+    int port = _preferences->getInt(preference_mqtt_broker_port, 0);
     if(port == 0)
     {
         port = 1883;
@@ -302,14 +303,14 @@ void NukiNetwork::initialize()
     _device->mqttSetCleanSession(MQTT_CLEAN_SESSIONS);
     _device->mqttSetKeepAlive(MQTT_KEEP_ALIVE);
 
-    _networkTimeout = _preferences->getInt(preference_network_timeout);
+    _networkTimeout = _preferences->getInt(preference_network_timeout, 0);
     if(_networkTimeout == 0)
     {
         _networkTimeout = -1;
         _preferences->putInt(preference_network_timeout, _networkTimeout);
     }
 
-    _publishDebugInfo = _preferences->getBool(preference_publish_debug_info);
+    _publishDebugInfo = _preferences->getBool(preference_publish_debug_info, false);
 
     char gpioPath[250];
     bool rebGpio = rebuildGpio();
@@ -436,7 +437,7 @@ bool NukiNetwork::update()
     
     _lastConnectedTs = ts;
 
-#if PRESENCE_DETECTION_ENABLED
+    #if PRESENCE_DETECTION_ENABLED
     if(_presenceDetection != nullptr && (_lastPresenceTs == 0 || (ts - _lastPresenceTs) > 3000))
     {
         char* presenceCsv = _presenceDetection->generateCsv();
@@ -449,7 +450,7 @@ bool NukiNetwork::update()
 
         _lastPresenceTs = ts;
     }
-#endif
+    #endif
 
     if(_device->signalStrength() != 127 && _rssiPublishInterval > 0 && ts - _lastRssiTs > _rssiPublishInterval)
     {
@@ -468,16 +469,16 @@ bool NukiNetwork::update()
         publishULong(_maintenancePathPrefix, mqtt_topic_uptime, ts / 1000 / 60, true);
         publishString(_maintenancePathPrefix, mqtt_topic_mqtt_connection_state, "online", true);
 
+        if(_lastMaintenanceTs == 0)
+        {
+            publishString(_maintenancePathPrefix, mqtt_topic_restart_reason_fw, getRestartReason().c_str(), true);
+            publishString(_maintenancePathPrefix, mqtt_topic_restart_reason_esp, getEspRestartReason().c_str(), true);
+            publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_version, NUKI_HUB_VERSION, true);
+            publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_build, NUKI_HUB_BUILD, true);
+        }
         if(_publishDebugInfo)
         {
             publishUInt(_maintenancePathPrefix, mqtt_topic_freeheap, esp_get_free_heap_size(), true);
-            publishString(_maintenancePathPrefix, mqtt_topic_restart_reason_fw, getRestartReason().c_str(), true);
-            publishString(_maintenancePathPrefix, mqtt_topic_restart_reason_esp, getEspRestartReason().c_str(), true);
-        }
-        if (!_versionPublished) {
-            publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_version, NUKI_HUB_VERSION, true);
-            publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_build, NUKI_HUB_BUILD, true);
-            _versionPublished = true;
         }
         _lastMaintenanceTs = ts;
     }
@@ -488,30 +489,41 @@ bool NukiNetwork::update()
         {
             _lastUpdateCheckTs = ts;
 
-            https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-            https.useHTTP10(true);
-            https.begin(GITHUB_OTA_MANIFEST_URL);
-
-            int httpResponseCode = https.GET();
-
-            if (httpResponseCode == HTTP_CODE_OK || httpResponseCode == HTTP_CODE_MOVED_PERMANENTLY)
-            {
-                JsonDocument doc;
-                DeserializationError jsonError = deserializeJson(doc, https.getStream());
-
-                if (!jsonError)
+            NetworkClientSecure *client = new NetworkClientSecure;
+            if (client) {
+                client->setDefaultCACertBundle();
                 {
-                    _latestVersion = doc["release"]["version"];
-                    publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_latest, _latestVersion, true);
+                    HTTPClient https;
+                    https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+                    https.useHTTP10(true);
 
-                    if (_latestVersion != _preferences->getString(preference_latest_version).c_str())
-                    {
-                        _preferences->putString(preference_latest_version, _latestVersion);
+                    if (https.begin(*client, GITHUB_OTA_MANIFEST_URL)) {
+                        int httpResponseCode = https.GET();
+
+                        if (httpResponseCode == HTTP_CODE_OK || httpResponseCode == HTTP_CODE_MOVED_PERMANENTLY)
+                        {
+                            JsonDocument doc;
+                            DeserializationError jsonError = deserializeJson(doc, https.getStream());
+
+                            if (!jsonError)
+                            {
+                                String currentVersion = NUKI_HUB_VERSION;
+
+                                if(atof(doc["release"]["version"]) >= atof(currentVersion.c_str())) _latestVersion = doc["release"]["version"];
+                                else if(currentVersion.indexOf("beta") > 0) _latestVersion = doc["beta"]["version"];
+                                else if(currentVersion.indexOf("master") > 0) _latestVersion = doc["master"]["version"];
+                                else _latestVersion = doc["release"]["version"];
+
+                                publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_latest, _latestVersion, true);
+
+                                if(strcmp(_latestVersion, _preferences->getString(preference_latest_version).c_str()) != 0) _preferences->putString(preference_latest_version, _latestVersion);
+                            }
+                        }
                     }
+                    https.end();
                 }
+                delete client;
             }
-
-            https.end();
         }
     }
 
@@ -616,7 +628,7 @@ void NukiNetwork::onMqttDisconnect(const espMqttClientTypes::DisconnectReason &r
 bool NukiNetwork::reconnect()
 {
     _mqttConnectionState = 0;
-    int port = _preferences->getInt(preference_mqtt_broker_port);
+    int port = _preferences->getInt(preference_mqtt_broker_port, 1883);
 
     while (!_device->mqttConnected() && (esp_timer_get_time() / 1000) > _nextReconnect)
     {
@@ -931,7 +943,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     json["dev"]["sw"] = softwareVersion;
     json["dev"]["hw"] = hardwareVersion;
 
-    String cuUrl = _preferences->getString(preference_mqtt_hass_cu_url);
+    String cuUrl = _preferences->getString(preference_mqtt_hass_cu_url, "");
 
     if (cuUrl != "")
     {
@@ -949,7 +961,11 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     json["avty"]["t"] = availabilityTopic;
     json["pl_lock"] = lockAction;
     json["pl_unlk"] = unlockAction;
-    json["pl_open"] = openAction;
+
+    uint32_t aclPrefs[17];
+    _preferences->getBytes(preference_acl, &aclPrefs, sizeof(aclPrefs));
+    if((int)aclPrefs[2]) json["pl_open"] = openAction;
+
     json["stat_t"] = String("~") + mqtt_topic_lock_ha_state;
     json["stat_jammed"] = "jammed";
     json["stat_locked"] = "locked";
@@ -962,7 +978,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
 
     serializeJson(json, _buffer, _bufferSize);
 
-    String path = _preferences->getString(preference_mqtt_hass_discovery);
+    String path = _preferences->getString(preference_mqtt_hass_discovery, "homeassistant");
     path.concat("/lock/");
     path.concat(uidString);
     path.concat("/smartlock/config");
@@ -1225,6 +1241,38 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      { { (char*)"en", (char*)"true" },
                        {(char*)"ic", (char*)"mdi:counter"}});
 
+    // Nuki Hub restart reason
+    publishHassTopic("sensor",
+                     "nuki_hub_restart_reason",
+                     uidString,
+                     "_nuki_hub_restart_reason",
+                     "Nuki Hub restart reason",
+                     name,
+                     baseTopic,
+                     _lockPath + mqtt_topic_restart_reason_fw,
+                     deviceType,
+                     "",
+                     "",
+                     "diagnostic",
+                     "",
+                     { { (char*)"en", (char*)"true" }});
+
+    // Nuki Hub restart reason ESP
+    publishHassTopic("sensor",
+                     "nuki_hub_restart_reason_esp",
+                     uidString,
+                     "_nuki_hub_restart_reason_esp",
+                     "Nuki Hub restart reason ESP",
+                     name,
+                     baseTopic,
+                     _lockPath + mqtt_topic_restart_reason_esp,
+                     deviceType,
+                     "",
+                     "",
+                     "diagnostic",
+                     "",
+                     { { (char*)"en", (char*)"true" }});
+
     if(_preferences->getBool(preference_check_updates))
     {
         // NUKI Hub latest
@@ -1318,7 +1366,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     publishHassTopic("button",
                      "query_lockstate",
                      uidString,
-                     "_query_lockstate_button",
+                     "_query_lockstate",
                      "Query lock state",
                      name,
                      baseTopic,
@@ -1335,7 +1383,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     publishHassTopic("button",
                      "query_config",
                      uidString,
-                     "_query_config_button",
+                     "_query_config",
                      "Query config",
                      name,
                      baseTopic,
@@ -1352,7 +1400,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     publishHassTopic("button",
                      "query_commandresult",
                      uidString,
-                     "_query_commandresult_button",
+                     "_query_commandresult",
                      "Query lock state command result",
                      name,
                      baseTopic,
@@ -1401,7 +1449,7 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
         publishHassTopic("button",
                          "unlatch",
                          uidString,
-                         "_unlatch_button",
+                         "_unlatch",
                          "Open",
                          name,
                          baseTopic,
@@ -1425,7 +1473,7 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
         publishHassTopic("button",
                          "lockngo",
                          uidString,
-                         "_lock_n_go_button",
+                         "_lockngo",
                          "Lock 'n' Go",
                          name,
                          baseTopic,
@@ -1449,7 +1497,7 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
         publishHassTopic("button",
                          "lockngounlatch",
                          uidString,
-                         "_lock_n_go_unlatch_button",
+                         "_lockngounlatch",
                          "Lock 'n' Go with unlatch",
                          name,
                          baseTopic,
@@ -1471,7 +1519,7 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
     publishHassTopic("button",
                      "query_battery",
                      uidString,
-                     "_query_battery_button",
+                     "_query_battery",
                      "Query battery",
                      name,
                      baseTopic,
@@ -2470,7 +2518,7 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
         publishHassTopic("button",
                          "unlatch",
                          uidString,
-                         "_unlatch_button",
+                         "_unlatch",
                          "Open",
                          name,
                          baseTopic,
@@ -2531,7 +2579,7 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
     }
 
     publishHassTopic("binary_sensor",
-                     "ring",
+                     "ring_detect",
                      uidString,
                      "_ring_detect",
                      "Ring detect",
@@ -3385,7 +3433,7 @@ void NukiNetwork::publishHASSConfigKeypad(char *deviceType, const char *baseTopi
     publishHassTopic("button",
                      "query_keypad",
                      uidString,
-                     "_query_keypad_button",
+                     "_query_keypad",
                      "Query keypad",
                      name,
                      baseTopic,
@@ -3454,9 +3502,7 @@ void NukiNetwork::publishHassTopic(const String& mqttDeviceType,
                                std::vector<std::pair<char*, char*>> additionalEntries
 )
 {
-    String discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery);
-
-    if (discoveryTopic != "")
+    if (_discoveryTopic != "")
     {
         JsonDocument json;
         json = createHassJson(uidString, uidStringPostfix, displayName, name, baseTopic, stateTopic, deviceType, deviceClass, stateClass, entityCat, commandTopic, additionalEntries);
@@ -3468,8 +3514,7 @@ void NukiNetwork::publishHassTopic(const String& mqttDeviceType,
 
 String NukiNetwork::createHassTopicPath(const String& mqttDeviceType, const String& mqttDeviceName, const String& uidString)
 {
-    String discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery);
-    String path = discoveryTopic;
+    String path = _discoveryTopic;
     path.concat("/");
     path.concat(mqttDeviceType);
     path.concat("/");
@@ -3483,9 +3528,7 @@ String NukiNetwork::createHassTopicPath(const String& mqttDeviceType, const Stri
 
 void NukiNetwork::removeHassTopic(const String& mqttDeviceType, const String& mqttDeviceName, const String& uidString)
 {
-    String discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery);
-
-    if (discoveryTopic != "")
+    if (_discoveryTopic != "")
     {
         String path = createHassTopicPath(mqttDeviceType, mqttDeviceName, uidString);
         _device->mqttPublish(path.c_str(), MQTT_QOS_LEVEL, true, "");
@@ -3526,7 +3569,7 @@ void NukiNetwork::removeHASSConfig(char* uidString)
     removeHassTopic((char*)"button", (char*)"lockngounlatch", uidString);
     removeHassTopic((char*)"sensor", (char*)"battery_level", uidString);
     removeHassTopic((char*)"binary_sensor", (char*)"door_sensor", uidString);
-    removeHassTopic((char*)"binary_sensor", (char*)"ring", uidString);
+    removeHassTopic((char*)"binary_sensor", (char*)"ring_detect", uidString);
     removeHassTopic((char*)"sensor", (char*)"sound_level", uidString);
     removeHassTopic((char*)"sensor", (char*)"last_action_authorization", uidString);
     removeHassTopic((char*)"sensor", (char*)"keypad_status", uidString);
@@ -3597,6 +3640,8 @@ void NukiNetwork::removeHASSConfig(char* uidString)
     removeHassTopic((char*)"sensor", (char*)"uptime", uidString);
     removeHassTopic((char*)"sensor", (char*)"mqtt_log", uidString);
     removeHassTopic((char*)"binary_sensor", (char*)"hybrid_connected", uidString);
+    removeHassTopic((char*)"sensor", (char*)"nuki_hub_restart_reason", uidString);
+    removeHassTopic((char*)"sensor", (char*)"nuki_hub_restart_reason_esp", uidString);
 }
 
 void NukiNetwork::removeHASSConfigTopic(char *deviceType, char *name, char *uidString)
@@ -3876,5 +3921,15 @@ void NukiNetwork::disableMqtt()
 {
     _device->disableMqtt();
     _mqttEnabled = false;
+}
+
+String NukiNetwork::localIP()
+{
+    return _device->localIP();
+}
+
+bool NukiNetwork::isConnected()
+{
+    return _device->isConnected();
 }
 #endif

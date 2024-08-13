@@ -1,5 +1,4 @@
 #include "NukiWrapper.h"
-#include <RTOS.h>
 #include "PreferencesKeys.h"
 #include "MqttTopics.h"
 #include "Logger.h"
@@ -38,7 +37,7 @@ NukiWrapper::NukiWrapper(const std::string& deviceName, NukiDeviceId* deviceId, 
     network->setLockActionReceivedCallback(nukiInst->onLockActionReceivedCallback);
     network->setOfficialUpdateReceivedCallback(nukiInst->onOfficialUpdateReceivedCallback);
     network->setConfigUpdateReceivedCallback(nukiInst->onConfigUpdateReceivedCallback);
-    if(_preferences->getBool(preference_disable_non_json, false)) network->setKeypadCommandReceivedCallback(nukiInst->onKeypadCommandReceivedCallback);
+    if(_disableNonJSON) network->setKeypadCommandReceivedCallback(nukiInst->onKeypadCommandReceivedCallback);
     network->setKeypadJsonCommandReceivedCallback(nukiInst->onKeypadJsonCommandReceivedCallback);
     network->setTimeControlCommandReceivedCallback(nukiInst->onTimeControlCommandReceivedCallback);
 
@@ -57,15 +56,16 @@ void NukiWrapper::initialize(const bool& firstStart)
     _nukiLock.initialize();
 
     esp_power_level_t powerLevel;
+    int pwrLvl = _preferences->getInt(preference_ble_tx_power, 9);
 
-    if(_preferences->getInt(preference_ble_tx_power, 9) >= 9) powerLevel = ESP_PWR_LVL_P9;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= 6) powerLevel = ESP_PWR_LVL_P6;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= 3) powerLevel = ESP_PWR_LVL_P6;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= 0) powerLevel = ESP_PWR_LVL_P3;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= -3) powerLevel = ESP_PWR_LVL_N3;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= -6) powerLevel = ESP_PWR_LVL_N6;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= -9) powerLevel = ESP_PWR_LVL_N9;
-    else if(_preferences->getInt(preference_ble_tx_power, 9) >= -12) powerLevel = ESP_PWR_LVL_N12;
+    if(pwrLvl >= 9) powerLevel = ESP_PWR_LVL_P9;
+    else if(pwrLvl >= 6) powerLevel = ESP_PWR_LVL_P6;
+    else if(pwrLvl >= 3) powerLevel = ESP_PWR_LVL_P6;
+    else if(pwrLvl >= 0) powerLevel = ESP_PWR_LVL_P3;
+    else if(pwrLvl >= -3) powerLevel = ESP_PWR_LVL_N3;
+    else if(pwrLvl >= -6) powerLevel = ESP_PWR_LVL_N6;
+    else if(pwrLvl >= -9) powerLevel = ESP_PWR_LVL_N9;
+    else if(pwrLvl >= -12) powerLevel = ESP_PWR_LVL_N12;
 
     _nukiLock.setPower(powerLevel);
     _nukiLock.registerBleScanner(_bleScanner);
@@ -84,6 +84,11 @@ void NukiWrapper::initialize(const bool& firstStart)
     _nrOfRetries = _preferences->getInt(preference_command_nr_of_retries, 200);
     _retryDelay = _preferences->getInt(preference_command_retry_delay);
     _rssiPublishInterval = _preferences->getInt(preference_rssi_publish_interval) * 1000;
+    _offEnabled = _preferences->getBool(preference_official_hybrid, false);
+    _disableNonJSON = _preferences->getBool(preference_disable_non_json, false);
+
+    _preferences->getBytes(preference_conf_lock_basic_acl, &_basicLockConfigaclPrefs, sizeof(_basicLockConfigaclPrefs));
+    _preferences->getBytes(preference_conf_lock_advanced_acl, &_advancedLockConfigaclPrefs, sizeof(_advancedLockConfigaclPrefs));
 
     if(firstStart)
     {
@@ -131,9 +136,9 @@ void NukiWrapper::initialize(const bool& firstStart)
         _preferences->putInt(preference_query_interval_configuration, 3600);
         _preferences->putInt(preference_query_interval_battery, 1800);
         _preferences->putInt(preference_query_interval_keypad, 1800);
-#if PRESENCE_DETECTION_ENABLED
+        #if PRESENCE_DETECTION_ENABLED
         _preferences->putInt(preference_presence_detection_timeout, -1);
-#endif
+        #endif
     }
 
     if(_nrOfRetries < 0 || _nrOfRetries == 200)
@@ -344,7 +349,7 @@ void NukiWrapper::update()
             _waitTimeControlUpdateTs = 0;
             updateTimeControl(true);
         }
-        if(_hassEnabled && _configRead && _network->reconnected())
+        if(_hassEnabled && _nukiConfigValid && _nukiAdvancedConfigValid && _network->reconnected())
         {
             setupHASS();
         }
@@ -469,7 +474,7 @@ void NukiWrapper::updateKeyTurnerState()
     }
 
     _retryLockstateCount = 0;
-    
+
     const NukiLock::LockState& lockState = _keyTurnerState.lockState;
 
     if(lockState != _lastKeyTurnerState.lockState) _statusUpdatedTs = esp_timer_get_time() / 1000;
@@ -491,10 +496,10 @@ void NukiWrapper::updateKeyTurnerState()
     }
     else if(!_network->_offConnected && (esp_timer_get_time() / 1000) < _statusUpdatedTs + 10000)
     {
-        _statusUpdated = true; 
+        _statusUpdated = true;
         Log->println(F("Lock: Keep updating status on intermediate lock state"));
     }
-    
+
     _network->publishKeyTurnerState(_keyTurnerState, _lastKeyTurnerState);
 
     char lockStateStr[20];
@@ -518,7 +523,7 @@ void NukiWrapper::updateBatteryState()
         Log->print(_retryCount + 1);
         Log->print("): ");
         result = _nukiLock.requestBatteryReport(&_batteryReport);
-        
+
         if(result != Nuki::CmdResult::Success) {
             ++_retryCount;
         }
@@ -536,10 +541,9 @@ void NukiWrapper::updateBatteryState()
 
 void NukiWrapper::updateConfig()
 {
-    readConfig();
-    readAdvancedConfig();
-    _configRead = true;
     bool expectedConfig = true;
+
+    readConfig();
 
     if(_nukiConfigValid)
     {
@@ -547,7 +551,7 @@ void NukiWrapper::updateConfig()
         {
             char uidString[20];
             itoa(_nukiConfig.nukiId, uidString, 16);
-            Log->print(F("Saving Nuki ID to preferences ("));
+            Log->print(F("Saving Lock Nuki ID to preferences ("));
             Log->print(_nukiConfig.nukiId);
             Log->print(" / ");
             Log->print(uidString);
@@ -561,8 +565,6 @@ void NukiWrapper::updateConfig()
             _firmwareVersion = std::to_string(_nukiConfig.firmwareVersion[0]) + "." + std::to_string(_nukiConfig.firmwareVersion[1]) + "." + std::to_string(_nukiConfig.firmwareVersion[2]);
             _hardwareVersion = std::to_string(_nukiConfig.hardwareRevision[0]) + "." + std::to_string(_nukiConfig.hardwareRevision[1]);
             if(_preferences->getBool(preference_conf_info_enabled, true)) _network->publishConfig(_nukiConfig);
-            _retryConfigCount = 0;
-
             if(_preferences->getBool(preference_timecontrol_info_enabled)) updateTimeControl(false);
 
             const int pinStatus = _preferences->getInt(preference_lock_pin_status, 4);
@@ -607,32 +609,42 @@ void NukiWrapper::updateConfig()
         }
         else
         {
-            Log->println(F("Invalid/Unexpected config recieved, retrying"));
+            Log->println(F("Invalid/Unexpected lock config recieved, ID does not matched saved ID"));
             expectedConfig = false;
-            ++_retryConfigCount;
         }
     }
     else
     {
-        Log->println(F("Invalid/Unexpected config recieved, retrying"));
+        Log->println(F("Invalid/Unexpected lock config recieved, Config is not valid"));
         expectedConfig = false;
-        ++_retryConfigCount;
     }
-    if(_nukiAdvancedConfigValid && _preferences->getUInt(preference_nuki_id_lock, 0) == _nukiConfig.nukiId)
+
+    if(expectedConfig)
     {
-        if(_preferences->getBool(preference_conf_info_enabled, true)) _network->publishAdvancedConfig(_nukiAdvancedConfig);
+        readAdvancedConfig();
+
+        if(_nukiAdvancedConfigValid)
+        {
+            if(_preferences->getBool(preference_conf_info_enabled, true)) _network->publishAdvancedConfig(_nukiAdvancedConfig);
+        }
+        else
+        {
+            Log->println(F("Invalid/Unexpected lock advanced config recieved, Advanced config is not valid"));
+            expectedConfig = false;
+        }
+    }
+
+    if(expectedConfig && _nukiConfigValid && _nukiAdvancedConfigValid)
+    {
         _retryConfigCount = 0;
+        Log->println(F("Done retrieving lock config and advanced config"));
     }
     else
     {
-        Log->println(F("Invalid/Unexpected advanced config recieved, retrying"));
-        expectedConfig = false;
         ++_retryConfigCount;
-    }
-    if(!expectedConfig && _retryConfigCount < 11)
-    {
+        Log->println(F("Invalid/Unexpected lock config and/or advanced config recieved, retrying in 10 seconds"));
         int64_t ts = (esp_timer_get_time() / 1000);
-        _nextConfigUpdateTs = ts + 60000;
+        _nextConfigUpdateTs = ts + 10000;
     }
 }
 
@@ -893,6 +905,7 @@ LockActionResult NukiWrapper::onLockActionReceivedCallback(const char *value)
     }
 
     nukiLockPreferences->end();
+
     return LockActionResult::AccessDenied;
 }
 
@@ -1036,10 +1049,7 @@ void NukiWrapper::onOfficialUpdateReceived(const char *topic, const char *value)
         Log->print(F("Lockstate: "));
         Log->println(str);
 
-        if(_preferences->getString(preference_mqtt_hass_discovery) != "")
-        {
-            _network->publishState((NukiLock::LockState)_network->_offState);
-        }
+        _network->publishState((NukiLock::LockState)_network->_offState);
     }
     else if(strcmp(topic, mqtt_topic_official_doorsensorState) == 0)
     {
@@ -1061,7 +1071,7 @@ void NukiWrapper::onOfficialUpdateReceived(const char *topic, const char *value)
         Log->print(F("Battery critical: "));
         Log->println(_network->_offCritical);
 
-        if(!_preferences->getBool(preference_disable_non_json, false)) _network->publishBool(mqtt_topic_battery_critical, _network->_offCritical, true);
+        if(!_disableNonJSON) _network->publishBool(mqtt_topic_battery_critical, _network->_offCritical, true);
         publishBatteryJson = true;
     }
     else if(strcmp(topic, mqtt_topic_official_batteryCharging) == 0)
@@ -1071,7 +1081,7 @@ void NukiWrapper::onOfficialUpdateReceived(const char *topic, const char *value)
         Log->print(F("Battery charging: "));
         Log->println(_network->_offCharging);
 
-        if(!_preferences->getBool(preference_disable_non_json, false)) _network->publishBool(mqtt_topic_battery_charging, _network->_offCharging, true);
+        if(!_disableNonJSON) _network->publishBool(mqtt_topic_battery_charging, _network->_offCharging, true);
         publishBatteryJson = true;
     }
     else if(strcmp(topic, mqtt_topic_official_batteryChargeState) == 0)
@@ -1081,19 +1091,19 @@ void NukiWrapper::onOfficialUpdateReceived(const char *topic, const char *value)
         Log->print(F("Battery level: "));
         Log->println(_network->_offChargeState);
 
-        if(!_preferences->getBool(preference_disable_non_json, false)) _network->publishInt(mqtt_topic_battery_level, _network->_offChargeState, true);
+        if(!_disableNonJSON) _network->publishInt(mqtt_topic_battery_level, _network->_offChargeState, true);
         publishBatteryJson = true;
     }
     else if(strcmp(topic, mqtt_topic_official_keypadBatteryCritical) == 0)
     {
         _network->_offKeypadCritical = (strcmp(value, "true") == 0 ? 1 : 0);
-        if(!_preferences->getBool(preference_disable_non_json, false)) _network->publishBool(mqtt_topic_battery_keypad_critical, _network->_offKeypadCritical, true);
+        if(!_disableNonJSON) _network->publishBool(mqtt_topic_battery_keypad_critical, _network->_offKeypadCritical, true);
         publishBatteryJson = true;
     }
     else if(strcmp(topic, mqtt_topic_official_doorsensorBatteryCritical) == 0)
     {
         _network->_offDoorsensorCritical = (strcmp(value, "true") == 0 ? 1 : 0);
-        if(!_preferences->getBool(preference_disable_non_json, false)) _network->publishBool(mqtt_topic_battery_doorsensor_critical, _network->_offDoorsensorCritical, true);
+        if(!_disableNonJSON) _network->publishBool(mqtt_topic_battery_doorsensor_critical, _network->_offDoorsensorCritical, true);
         publishBatteryJson = true;
     }
     else if(strcmp(topic, mqtt_topic_official_commandResponse) == 0)
@@ -1160,7 +1170,7 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
     JsonDocument jsonResult;
     char _resbuf[2048];
 
-    if(!_configRead || !_nukiConfigValid)
+    if(!_nukiConfigValid)
     {
         jsonResult["general"] = "configNotReady";
         serializeJson(jsonResult, _resbuf, sizeof(_resbuf));
@@ -1192,13 +1202,6 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
     const char *advancedKeys[22] = {"unlockedPositionOffsetDegrees", "lockedPositionOffsetDegrees", "singleLockedPositionOffsetDegrees", "unlockedToLockedTransitionOffsetDegrees", "lockNgoTimeout", "singleButtonPressAction", "doubleButtonPressAction", "detachedCylinder", "batteryType", "automaticBatteryTypeDetection", "unlatchDuration", "autoLockTimeOut",  "autoUnLockDisabled", "nightModeEnabled", "nightModeStartTime", "nightModeEndTime", "nightModeAutoLockEnabled", "nightModeAutoUnlockDisabled", "nightModeImmediateLockOnStart", "autoLockEnabled", "immediateAutoLockEnabled", "autoUpdateEnabled"};
     bool basicUpdated = false;
     bool advancedUpdated = false;
-    uint32_t basicLockConfigAclPrefs[16];
-    uint32_t advancedLockConfigAclPrefs[22];
-
-    nukiLockPreferences = new Preferences();
-    nukiLockPreferences->begin("nukihub", true);
-    nukiLockPreferences->getBytes(preference_conf_lock_basic_acl, &basicLockConfigAclPrefs, sizeof(basicLockConfigAclPrefs));
-    nukiLockPreferences->getBytes(preference_conf_lock_advanced_acl, &advancedLockConfigAclPrefs, sizeof(advancedLockConfigAclPrefs));
 
     for(int i=0; i < 16; i++)
     {
@@ -1212,7 +1215,7 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
                 continue;
             }
 
-            if((int)basicLockConfigAclPrefs[i] == 1)
+            if((int)_basicLockConfigaclPrefs[i] == 1)
             {
                 cmdResult = Nuki::CmdResult::Error;
                 _retryCount = 0;
@@ -1424,7 +1427,7 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
                 continue;
             }
 
-            if((int)advancedLockConfigAclPrefs[j] == 1)
+            if((int)_advancedLockConfigaclPrefs[j] == 1)
             {
                 cmdResult = Nuki::CmdResult::Error;
                 _retryCount = 0;
@@ -1696,8 +1699,6 @@ void NukiWrapper::onConfigUpdateReceived(const char *value)
         }
     }
 
-    nukiLockPreferences->end();
-
     if(basicUpdated || advancedUpdated) jsonResult["general"] = "success";
     else jsonResult["general"] = "noChange";
 
@@ -1726,9 +1727,6 @@ void NukiWrapper::onTimeControlCommandReceivedCallback(const char *value)
 
 void NukiWrapper::gpioActionCallback(const GpioAction &action, const int& pin)
 {
-    nukiLockPreferences = new Preferences();
-    nukiLockPreferences->begin("nukihub", true);
-
     switch(action)
     {
         case GpioAction::Lock:
@@ -1777,13 +1775,11 @@ void NukiWrapper::gpioActionCallback(const GpioAction &action, const int& pin)
             }
             break;
     }
-
-    nukiLockPreferences->end();
 }
 
 void NukiWrapper::onKeypadCommandReceived(const char *command, const uint &id, const String &name, const String &code, const int& enabled)
 {
-    if(_preferences->getBool(preference_disable_non_json, false)) return;
+    if(_disableNonJSON) return;
 
     if(!_preferences->getBool(preference_keypad_control_enabled))
     {
@@ -1793,7 +1789,7 @@ void NukiWrapper::onKeypadCommandReceived(const char *command, const uint &id, c
 
     if(!_hasKeypad)
     {
-        if(_configRead)
+        if(_nukiConfigValid)
         {
             _network->publishKeypadCommandResult("KeypadNotAvailable");
         }
@@ -1929,7 +1925,7 @@ void NukiWrapper::onKeypadJsonCommandReceived(const char *value)
 
     if(!_hasKeypad)
     {
-        if(_configRead && _nukiConfigValid)
+        if(_nukiConfigValid)
         {
             _network->publishKeypadJsonCommandResult("keypadNotAvailable");
             return;
@@ -2369,7 +2365,7 @@ void NukiWrapper::onKeypadJsonCommandReceived(const char *value)
 
 void NukiWrapper::onTimeControlCommandReceived(const char *value)
 {
-    if(!_configRead || !_nukiConfigValid)
+    if(!_nukiConfigValid)
     {
         _network->publishTimeControlCommandResult("configNotReady");
         return;
@@ -2614,7 +2610,7 @@ void NukiWrapper::notify(Nuki::EventType eventType)
 {
     if(!_network->_offConnected)
     {
-        if(_preferences->getBool(preference_official_hybrid, false) && _intervalHybridLockstate > 0 && (esp_timer_get_time() / 1000) > (_intervalHybridLockstate * 1000))
+        if(_offEnabled && _intervalHybridLockstate > 0 && (esp_timer_get_time() / 1000) > (_intervalHybridLockstate * 1000))
         {
             Log->println("OffKeyTurnerStatusUpdated");
             _statusUpdated = true;
@@ -2643,17 +2639,18 @@ void NukiWrapper::readConfig()
         result = _nukiLock.requestConfig(&_nukiConfig);
         _nukiConfigValid = result == Nuki::CmdResult::Success;
 
-        if(!_nukiConfigValid) {
+        char resultStr[20];
+        NukiLock::cmdResultToString(result, resultStr);
+        Log->print(F("Lock config result: "));
+        Log->println(resultStr);
+
+        if(result != Nuki::CmdResult::Success) {
             ++_retryCount;
-            Log->println("Retrying in 1s");
+            Log->println("Failed to retrieve lock config, retrying in 1s");
+            delay(1000);
         }
         else break;
     }
-
-    char resultStr[20];
-    NukiLock::cmdResultToString(result, resultStr);
-    Log->print(F("Lock config result: "));
-    Log->println(resultStr);
 }
 
 void NukiWrapper::readAdvancedConfig()
@@ -2666,16 +2663,18 @@ void NukiWrapper::readAdvancedConfig()
          result = _nukiLock.requestAdvancedConfig(&_nukiAdvancedConfig);
         _nukiAdvancedConfigValid = result == Nuki::CmdResult::Success;
 
-        if(!_nukiAdvancedConfigValid) {
+        char resultStr[20];
+        NukiLock::cmdResultToString(result, resultStr);
+        Log->print(F("Lock advanced config result: "));
+        Log->println(resultStr);
+
+        if(result != Nuki::CmdResult::Success) {
             ++_retryCount;
+            Log->println("Failed to retrieve lock advanced config, retrying in 1s");
+            delay(1000);
         }
         else break;
     }
-
-    char resultStr[20];
-    NukiLock::cmdResultToString(result, resultStr);
-    Log->print(F("Lock advanced config result: "));
-    Log->println(resultStr);
 }
 
 void NukiWrapper::setupHASS()
@@ -2702,30 +2701,9 @@ bool NukiWrapper::hasDoorSensor() const
 
 void NukiWrapper::disableHASS()
 {
-    if(!_nukiConfigValid)
-    {
-        Nuki::CmdResult result = (Nuki::CmdResult)-1;
-        _retryCount = 0;
-
-        while(_retryCount < _nrOfRetries + 1)
-        {
-            result = _nukiLock.requestConfig(&_nukiConfig);
-            _nukiConfigValid = result == Nuki::CmdResult::Success;
-
-            if(!_nukiConfigValid) {
-                ++_retryCount;
-            }
-            else break;
-        }
-    }
-
-    if(_nukiConfigValid)
-    {
-        char uidString[20];
-        itoa(_nukiConfig.nukiId, uidString, 16);
-        _network->removeHASSConfig(uidString);
-    }
-    else Log->println(F("Unable to disable HASS. Invalid config received."));
+    char uidString[20];
+    itoa(_preferences->getUInt(preference_nuki_id_lock, 0), uidString, 16);
+    _network->removeHASSConfig(uidString);
 }
 
 const BLEAddress NukiWrapper::getBleAddress() const
