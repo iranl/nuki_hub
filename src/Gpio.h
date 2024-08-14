@@ -26,7 +26,8 @@ enum class PinRole
     OutputHighRtoOrCmActive,
     GeneralOutput,
     GeneralInputPullDown,
-    GeneralInputPullUp
+    GeneralInputPullUp,
+    Ethernet
 };
 
 enum class GpioAction
@@ -66,20 +67,33 @@ public:
 
     const std::vector<uint8_t>& availablePins() const;
     const std::vector<PinEntry>& pinConfiguration() const;
+    const std::vector<int> getDisabledPins() const;
     const PinRole getPinRole(const int& pin) const;
 
     String getRoleDescription(PinRole role) const;
     void getConfigurationText(String& text, const std::vector<PinEntry>& pinConfiguration, const String& linebreak = "\n") const;
 
     const std::vector<PinRole>& getAllRoles() const;
-
+    
     void setPinOutput(const uint8_t& pin, const uint8_t& state);
 
 private:
     void IRAM_ATTR notify(const GpioAction& action, const int& pin);
     static void inputCallback(const int & pin);
 
+    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+    //Based on https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html and https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
+    const std::vector<uint8_t> _availablePins = { 3, 4, 5, 6, 7, 10, 11, 18, 19, 20, 21 };
+    #elif defined(CONFIG_IDF_TARGET_ESP32S3)
+    //Based on https://github.com/atomic14/esp32-s3-pinouts?tab=readme-ov-file and https://docs.espressif.com/projects/esp-idf/en/v5.3/esp32s3/api-reference/peripherals/gpio.html and https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf
+    const std::vector<uint8_t> _availablePins = { 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 38, 39, 40, 41, 42, 43, 44, 47, 48 };
+    #elif defined(CONFIG_IDF_TARGET_ESP32C6)
+    //Based on https://docs.espressif.com/projects/esp-idf/en/v5.3/esp32c6/api-reference/peripherals/gpio.html and https://www.espressif.com/sites/default/files/documentation/esp32-c6_datasheet_en.pdf
+    const std::vector<uint8_t> _availablePins = { 0, 1, 2, 3, 6, 7, 12, 13, 16, 17, 18, 19, 20, 21, 22, 23 };    
+    #else
+    //Based on https://randomnerdtutorials.com/esp32-pinout-reference-gpios/
     const std::vector<uint8_t> _availablePins = { 2, 4, 5, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 32, 33 };
+    #endif
     const std::vector<PinRole> _allRoles =
         {
             PinRole::Disabled,
@@ -101,7 +115,8 @@ private:
             PinRole::OutputHighRtoOrCmActive,
             PinRole::GeneralInputPullDown,
             PinRole::GeneralInputPullUp,
-            PinRole::GeneralOutput
+            PinRole::GeneralOutput,
+            PinRole::Ethernet
         };
 
     std::vector<PinEntry> _pinConfiguration;
@@ -120,7 +135,7 @@ private:
     static void IRAM_ATTR isrDeactivateCM();
 
     std::vector<std::function<void(const GpioAction&, const int&)>> _callbacks;
-
+    
     static Gpio* _inst;
     static int64_t _debounceTs;
 
