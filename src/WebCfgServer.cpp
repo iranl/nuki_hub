@@ -4,7 +4,9 @@
 #include "Logger.h"
 #include "RestartReason.h"
 #include <esp_task_wdt.h>
+#ifndef CONFIG_IDF_TARGET_ESP32H2
 #include <esp_wifi.h>
+#endif
 #include <Update.h>
 
 #ifndef NUKI_HUB_UPDATER
@@ -138,10 +140,21 @@ void WebCfgServer::initialize()
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         buildGpioConfigHtml(request);
     });
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
     _asyncServer->on("/wifi", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         buildConfigureWifiHtml(request);
     });
+    _asyncServer->on("/wifimanager", HTTP_GET, [&](AsyncWebServerRequest *request){
+        if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
+        if(_allowRestartToPortal)
+        {
+            buildConfirmHtml(request, "Restarting. Connect to ESP access point to reconfigure Wi-Fi.", 0);
+            waitAndProcess(false, 1000);
+            _network->reconfigureDevice();
+        }
+    });
+    #endif
     _asyncServer->on("/unpairlock", HTTP_POST, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         processUnpair(request, false);
@@ -153,15 +166,6 @@ void WebCfgServer::initialize()
     _asyncServer->on("/factoryreset", HTTP_POST, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         processFactoryReset(request);
-    });
-    _asyncServer->on("/wifimanager", HTTP_GET, [&](AsyncWebServerRequest *request){
-        if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
-        if(_allowRestartToPortal)
-        {
-            buildConfirmHtml(request, "Restarting. Connect to ESP access point to reconfigure Wi-Fi.", 0);
-            waitAndProcess(false, 1000);
-            _network->reconfigureDevice();
-        }
     });
     _asyncServer->on("/info", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
@@ -2550,7 +2554,9 @@ void WebCfgServer::buildHtml(AsyncWebServerRequest *request)
     if(_preferences->getInt(preference_network_hardware, 0) == 11) buildNavigationMenuEntry(response, "Custom Ethernet Configuration", "/custntw");
     if(_preferences->getBool(preference_publish_debug_info, false)) buildNavigationMenuEntry(response, "Advanced Configuration", "/advanced");
     if(_preferences->getBool(preference_webserial_enabled, false)) buildNavigationMenuEntry(response, "Open Webserial", "/webserial");
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
     if(_allowRestartToPortal) buildNavigationMenuEntry(response, "Configure Wi-Fi", "/wifi");
+    #endif
     buildNavigationMenuEntry(response, "Reboot Nuki Hub", "/reboot");
     response->print("</ul></body></html>");
     request->send(response);
@@ -2614,14 +2620,20 @@ void WebCfgServer::buildCredHtml(AsyncWebServerRequest *request)
         response->print("<br><button type=\"submit\">OK</button></form>");
     }
     response->print("<br><br><h3>Factory reset Nuki Hub</h3>");
-    response->print("<h4 class=\"warning\">This will reset all settings to default and unpair Nuki Lock and/or Opener. Optionally will also reset WiFi settings and reopen WiFi manager portal.</h4>");
+    response->print("<h4 class=\"warning\">This will reset all settings to default and unpair Nuki Lock and/or Opener.");
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
+    response->print("Optionally will also reset WiFi settings and reopen WiFi manager portal.");
+    #endif
+    response->print("</h4>");
     response->print("<form class=\"adapt\" method=\"post\" action=\"/factoryreset\">");
     response->print("<table>");
     String message = "Type ";
     message.concat(_confirmCode);
     message.concat(" to confirm factory reset");
     printInputField(response, "CONFIRMTOKEN", message.c_str(), "", 10, "");
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
     printCheckBox(response, "WIFI", "Also reset WiFi settings", false, "");
+    #endif
     response->print("</table>");
     response->print("<br><button type=\"submit\">OK</button></form>");
     response->print("</body></html>");
@@ -2651,9 +2663,11 @@ void WebCfgServer::buildMqttConfigHtml(AsyncWebServerRequest *request)
     printTextarea(response, "MQTTCRT", "MQTT SSL Client Certificate (*, optional)", _preferences->getString(preference_mqtt_crt).c_str(), TLS_CERT_MAX_SIZE, _network->encryptionSupported(), true);
     printTextarea(response, "MQTTKEY", "MQTT SSL Client Key (*, optional)", _preferences->getString(preference_mqtt_key).c_str(), TLS_KEY_MAX_SIZE, _network->encryptionSupported(), true);
     printDropDown(response, "NWHW", "Network hardware", String(_preferences->getInt(preference_network_hardware)), getNetworkDetectionOptions(), "");
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
     printCheckBox(response, "NWHWWIFIFB", "Disable fallback to Wi-Fi / Wi-Fi config portal", _preferences->getBool(preference_network_wifi_fallback_disabled), "");
     printCheckBox(response, "BESTRSSI", "Connect to AP with the best signal in an environment with multiple APs with the same SSID", _preferences->getBool(preference_find_best_rssi), "");
     printInputField(response, "RSSI", "RSSI Publish interval (seconds; -1 to disable)", _preferences->getInt(preference_rssi_publish_interval), 6, "");
+    #endif
     printInputField(response, "NETTIMEOUT", "MQTT Timeout until restart (seconds; -1 to disable)", _preferences->getInt(preference_network_timeout), 5, "");
     printCheckBox(response, "RSTDISC", "Restart on disconnect", _preferences->getBool(preference_restart_on_disconnect), "");
     printCheckBox(response, "RECNWTMQTTDIS", "Reconnect network on MQTT connection failure", _preferences->getBool(preference_recon_netw_on_mqtt_discon), "");
@@ -3061,7 +3075,7 @@ void WebCfgServer::buildGpioConfigHtml(AsyncWebServerRequest *request)
 
     const auto& availablePins = _gpio->availablePins();
     const auto& disabledPins = _gpio->getDisabledPins();
-    
+
     for(const auto& pin : availablePins)
     {
         String pinStr = String(pin);
@@ -3093,6 +3107,7 @@ void WebCfgServer::buildGpioConfigHtml(AsyncWebServerRequest *request)
     request->send(response);
 }
 
+#ifndef CONFIG_IDF_TARGET_ESP32H2
 void WebCfgServer::buildConfigureWifiHtml(AsyncWebServerRequest *request)
 {
     AsyncResponseStream *response = request->beginResponseStream("text/html");
@@ -3103,6 +3118,7 @@ void WebCfgServer::buildConfigureWifiHtml(AsyncWebServerRequest *request)
     response->print("</body></html>");
     request->send(response);
 }
+#endif
 
 void WebCfgServer::buildInfoHtml(AsyncWebServerRequest *request)
 {
@@ -3128,7 +3144,7 @@ void WebCfgServer::buildInfoHtml(AsyncWebServerRequest *request)
     response->print("\nUpdater build: ");
     response->print(_preferences->getString(preference_updater_build, ""));
     response->print("\nUpdater build date: ");
-    response->print(_preferences->getString(preference_updater_date, ""));    
+    response->print(_preferences->getString(preference_updater_date, ""));
     response->print("\nUptime (min): ");
     response->print(esp_timer_get_time() / 1000 / 1000 / 60);
     response->print("\nConfig version: ");
@@ -3177,14 +3193,17 @@ void WebCfgServer::buildInfoHtml(AsyncWebServerRequest *request)
     {
         response->print("\nIP Address: ");
         response->print(_network->localIP());
+
         if(_network->networkDeviceName() == "Built-in Wi-Fi")
         {
+            #ifndef CONFIG_IDF_TARGET_ESP32H2
             response->print("\nSSID: ");
             response->print(WiFi.SSID());
             response->print("\nBSSID of AP: ");
             response->print(_network->networkBSSID());
             response->print("\nESP32 MAC address: ");
             response->print(WiFi.macAddress());
+            #endif
         }
         else
         {
@@ -3208,6 +3227,7 @@ void WebCfgServer::buildInfoHtml(AsyncWebServerRequest *request)
         response->print(_preferences->getString(preference_ip_dns_server, ""));
     }
 
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
     response->print("\nFallback to Wi-Fi / Wi-Fi config portal disabled: ");
     response->print(_preferences->getBool(preference_network_wifi_fallback_disabled, false) ? "Yes" : "No");
     if(_network->networkDeviceName() == "Built-in Wi-Fi")
@@ -3219,6 +3239,7 @@ void WebCfgServer::buildInfoHtml(AsyncWebServerRequest *request)
         if(_preferences->getInt(preference_rssi_publish_interval, 60) < 0) response->print("Disabled");
         else response->print(_preferences->getInt(preference_rssi_publish_interval, 60));
     }
+    #endif
     response->print("\nRestart ESP32 on network disconnect enabled: ");
     response->print(_preferences->getBool(preference_restart_on_disconnect, false) ? "Yes" : "No");
     response->print("\nReconnect network on MQTT connection failure enabled: ");
@@ -3796,6 +3817,7 @@ void WebCfgServer::processFactoryReset(AsyncWebServerRequest *request)
 
     _preferences->clear();
 
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
     if(resetWifi)
     {
         wifi_config_t current_conf;
@@ -3805,6 +3827,7 @@ void WebCfgServer::processFactoryReset(AsyncWebServerRequest *request)
         esp_wifi_set_config((wifi_interface_t)ESP_IF_WIFI_STA, &current_conf);
         _network->reconfigureDevice();
     }
+    #endif
 
     waitAndProcess(false, 3000);
     restartEsp(RestartReason::NukiHubReset);
