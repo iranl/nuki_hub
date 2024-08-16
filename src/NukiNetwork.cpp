@@ -630,9 +630,9 @@ bool NukiNetwork::update()
             return false;
         }
         _mqttConnectCounter = 0;
-        if(forceEnableWebServer && !_webEnabled)
+        if(forceEnableWebServer && !_webEnabled) 
         {
-            forceEnableWebServer = false;
+            forceEnableWebServer = false; 
             delay(200);
             restartEsp(RestartReason::ReconfigureWebServer);
         }
@@ -654,7 +654,7 @@ bool NukiNetwork::update()
     }
 
     _lastConnectedTs = ts;
-
+    
     #if PRESENCE_DETECTION_ENABLED
     if(_presenceDetection != nullptr && (_lastPresenceTs == 0 || (ts - _lastPresenceTs) > 3000))
     {
