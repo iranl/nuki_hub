@@ -9,6 +9,9 @@
 #endif
 #include <Update.h>
 
+extern const uint8_t x509_crt_imported_bundle_bin_start[] asm("_binary_x509_crt_bundle_start");
+extern const uint8_t x509_crt_imported_bundle_bin_end[]   asm("_binary_x509_crt_bundle_end");
+
 #ifndef NUKI_HUB_UPDATER
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
@@ -90,7 +93,7 @@ void WebCfgServer::initialize()
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         String message = "";
         bool restart = processImport(request, message);
-        buildConfirmHtml(request, message, 3);
+        buildConfirmHtml(request, message, 3, true);
     });
     _asyncServer->on("/export", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
@@ -174,7 +177,7 @@ void WebCfgServer::initialize()
     _asyncServer->on("/debugon", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         _preferences->putBool(preference_publish_debug_info, true);
-        buildConfirmHtml(request, "Debug On", 3);
+        buildConfirmHtml(request, "Debug On", 3, true);
         Log->println(F("Restarting"));
         waitAndProcess(true, 1000);
         restartEsp(RestartReason::ConfigurationUpdated);
@@ -182,7 +185,7 @@ void WebCfgServer::initialize()
     _asyncServer->on("/debugoff", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         _preferences->putBool(preference_publish_debug_info, false);
-        buildConfirmHtml(request, "Debug Off", 3);
+        buildConfirmHtml(request, "Debug Off", 3, true);
         Log->println(F("Restarting"));
         waitAndProcess(true, 1000);
         restartEsp(RestartReason::ConfigurationUpdated);
@@ -191,12 +194,12 @@ void WebCfgServer::initialize()
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         String message = "";
         bool restart = processArgs(request, message);
-        buildConfirmHtml(request, message, 3);
+        buildConfirmHtml(request, message, 3, true);
     });
     _asyncServer->on("/savegpiocfg", HTTP_POST, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
         processGpioArgs(request);
-        buildConfirmHtml(request, "Saving GPIO configuration. Restarting.", 3);
+        buildConfirmHtml(request, "Saving GPIO configuration. Restarting.", 3, true);
         Log->println(F("Restarting"));
         waitAndProcess(true, 1000);
         restartEsp(RestartReason::GpioConfigurationUpdated);
@@ -212,14 +215,14 @@ void WebCfgServer::initialize()
     });
     _asyncServer->on("/reboottoota", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
-        buildConfirmHtml(request, "Rebooting to other partition", 2);
+        buildConfirmHtml(request, "Rebooting to other partition", 2, true);
         waitAndProcess(true, 1000);
         esp_ota_set_boot_partition(esp_ota_get_next_update_partition(NULL));
         restartEsp(RestartReason::OTAReboot);
     });
     _asyncServer->on("/reboot", HTTP_GET, [&](AsyncWebServerRequest *request){
         if(strlen(_credUser) > 0 && strlen(_credPassword) > 0) if(!request->authenticate(_credUser, _credPassword)) return request->requestAuthentication();
-        buildConfirmHtml(request, "Rebooting", 2);
+        buildConfirmHtml(request, "Rebooting", 2, true);
         waitAndProcess(true, 1000);
         restartEsp(RestartReason::RequestedViaWebServer);
     });
@@ -299,7 +302,8 @@ void WebCfgServer::buildOtaHtml(AsyncWebServerRequest *request, bool debug)
 
     NetworkClientSecure *client = new NetworkClientSecure;
     if (client) {
-        client->setDefaultCACertBundle();
+        //client->setDefaultCACertBundle();
+        client->setCACertBundle(x509_crt_imported_bundle_bin_start, x509_crt_imported_bundle_bin_end - x509_crt_imported_bundle_bin_start);
         {
             HTTPClient https;
             https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -3687,11 +3691,11 @@ void WebCfgServer::processUnpair(AsyncWebServerRequest *request, bool opener)
 
     if(value != _confirmCode)
     {
-        buildConfirmHtml(request, "Confirm code is invalid.", 3);
+        buildConfirmHtml(request, "Confirm code is invalid.", 3, true);
         return;
     }
 
-    buildConfirmHtml(request, opener ? "Unpairing Nuki Opener and restarting." : "Unpairing Nuki Lock and restarting.", 3);
+    buildConfirmHtml(request, opener ? "Unpairing Nuki Opener and restarting." : "Unpairing Nuki Lock and restarting.", 3, true);
     if(!opener && _nuki != nullptr)
     {
         _nuki->disableHASS();
@@ -3782,7 +3786,7 @@ void WebCfgServer::processFactoryReset(AsyncWebServerRequest *request)
     bool resetWifi = false;
     if(value.length() == 0 || value != _confirmCode)
     {
-        buildConfirmHtml(request, "Confirm code is invalid.", 3);
+        buildConfirmHtml(request, "Confirm code is invalid.", 3, true);
         return;
     }
     else
@@ -3797,9 +3801,9 @@ void WebCfgServer::processFactoryReset(AsyncWebServerRequest *request)
         if(value2 == "1")
         {
             resetWifi = true;
-            buildConfirmHtml(request, "Factory resetting Nuki Hub, unpairing Nuki Lock and Nuki Opener and resetting WiFi.", 3);
+            buildConfirmHtml(request, "Factory resetting Nuki Hub, unpairing Nuki Lock and Nuki Opener and resetting WiFi.", 3, true);
         }
-        else buildConfirmHtml(request, "Factory resetting Nuki Hub, unpairing Nuki Lock and Nuki Opener.", 3);
+        else buildConfirmHtml(request, "Factory resetting Nuki Hub, unpairing Nuki Lock and Nuki Opener.", 3, true);
     }
 
     waitAndProcess(false, 2000);

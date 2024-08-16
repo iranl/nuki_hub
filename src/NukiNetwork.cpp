@@ -18,6 +18,8 @@ NukiNetwork* NukiNetwork::_inst = nullptr;
 
 RTC_NOINIT_ATTR char WiFi_fallbackDetect[14];
 extern bool forceEnableWebServer;
+extern const uint8_t x509_crt_imported_bundle_bin_start[] asm("_binary_x509_crt_bundle_start");
+extern const uint8_t x509_crt_imported_bundle_bin_end[]   asm("_binary_x509_crt_bundle_end");
 
 #ifndef NUKI_HUB_UPDATER
 NukiNetwork::NukiNetwork(Preferences *preferences, PresenceDetection* presenceDetection, Gpio* gpio, const String& maintenancePathPrefix, char* buffer, size_t bufferSize)
@@ -707,7 +709,8 @@ bool NukiNetwork::update()
 
             NetworkClientSecure *client = new NetworkClientSecure;
             if (client) {
-                client->setDefaultCACertBundle();
+                //client->setDefaultCACertBundle();
+                client->setCACertBundle(x509_crt_imported_bundle_bin_start, x509_crt_imported_bundle_bin_end - x509_crt_imported_bundle_bin_start);                
                 {
                     HTTPClient https;
                     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
