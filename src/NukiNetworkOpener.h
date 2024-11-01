@@ -6,6 +6,7 @@
 #include "NukiConstants.h"
 #include "NukiOpenerConstants.h"
 #include "NukiNetworkLock.h"
+#include "EspMillis.h"
 
 class NukiNetworkOpener : public MqttReceiver
 {
@@ -49,7 +50,8 @@ public:
     void setAuthCommandReceivedCallback(void (*authCommandReceivedReceivedCallback)(const char* value));
     void onMqttDataReceived(const char* topic, byte* payload, const unsigned int length) override;
 
-    bool reconnected();
+    int mqttConnectionState();
+    bool reconnected(); //SETBACK
     uint8_t queryCommands();
     char _nukiName[33];
 
@@ -76,16 +78,17 @@ private:
 
     String concat(String a, String b);
 
-    Preferences* _preferences;
+    Preferences* _preferences = nullptr;
 
     NukiNetwork* _network = nullptr;
+    NukiPublisher* _nukiPublisher = nullptr;
 
     std::map<uint32_t, String> _authEntries;
     char _mqttPath[181] = {0};
     bool _isConnected = false;
     bool _firstTunerStatePublish = true;
     bool _haEnabled = false;
-    bool _reconnected = false;
+    bool _reconnected = false; //SETBACK
     bool _disableNonJSON = false;
 
     String _keypadCommandName = "";

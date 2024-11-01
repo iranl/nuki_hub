@@ -17,20 +17,21 @@
 
 NukiNetwork* NukiNetwork::_inst = nullptr;
 
-RTC_NOINIT_ATTR char WiFi_fallbackDetect[14];
+extern bool wifiFallback;
+extern bool disableNetwork;
 extern bool forceEnableWebServer;
 extern const uint8_t x509_crt_imported_bundle_bin_start[] asm("_binary_x509_crt_bundle_start");
 extern const uint8_t x509_crt_imported_bundle_bin_end[]   asm("_binary_x509_crt_bundle_end");
 
 #ifndef NUKI_HUB_UPDATER
 NukiNetwork::NukiNetwork(Preferences *preferences, Gpio* gpio, const String& maintenancePathPrefix, char* buffer, size_t bufferSize)
-: _preferences(preferences),
-  _gpio(gpio),
-  _buffer(buffer),
-  _bufferSize(bufferSize)
+    : _preferences(preferences),
+      _gpio(gpio),
+      _buffer(buffer),
+      _bufferSize(bufferSize)
 #else
 NukiNetwork::NukiNetwork(Preferences *preferences)
-: _preferences(preferences)
+    : _preferences(preferences)
 #endif
 {
     // Remove obsolete W5500 hardware detection configuration
@@ -43,7 +44,7 @@ NukiNetwork::NukiNetwork(Preferences *preferences)
     _webEnabled = _preferences->getBool(preference_webserver_enabled, true);
     _updateFromMQTT = _preferences->getBool(preference_update_from_mqtt, false);
 
-    #ifndef NUKI_HUB_UPDATER
+#ifndef NUKI_HUB_UPDATER
     memset(_maintenancePathPrefix, 0, sizeof(_maintenancePathPrefix));
     size_t len = maintenancePathPrefix.length();
     for(int i=0; i < len; i++)
@@ -60,7 +61,7 @@ NukiNetwork::NukiNetwork(Preferences *preferences)
     {
         _mqttConnectionStateTopic[i] = connectionStateTopic.charAt(i);
     }
-    #endif
+#endif
 
     setupDevice();
 }
@@ -69,50 +70,56 @@ void NukiNetwork::setupDevice()
 {
     _ipConfiguration = new IPConfiguration(_preferences);
     int hardwareDetect = _preferences->getInt(preference_network_hardware, 0);
-    Log->print(F("Hardware detect     : "));
+    Log->print(F("Hardware detect: "));
     Log->println(hardwareDetect);
 
     _firstBootAfterDeviceChange = _preferences->getBool(preference_ntw_reconfigure, false);
 
     if(hardwareDetect == 0)
     {
-        #ifndef CONFIG_IDF_TARGET_ESP32H2
+#ifndef CONFIG_IDF_TARGET_ESP32H2
         hardwareDetect = 1;
-        #else
+#else
         hardwareDetect = 11;
-       _preferences->putInt(preference_network_custom_addr, 1);
-       _preferences->putInt(preference_network_custom_cs, 8);
-       _preferences->putInt(preference_network_custom_irq, 9);
-       _preferences->putInt(preference_network_custom_rst, 10);
-       _preferences->putInt(preference_network_custom_sck, 11);
-       _preferences->putInt(preference_network_custom_miso, 12);
-       _preferences->putInt(preference_network_custom_mosi, 13);
-       _preferences->putBool(preference_ntw_reconfigure, true);
-        #endif
+        _preferences->putInt(preference_network_custom_addr, 1);
+        _preferences->putInt(preference_network_custom_cs, 8);
+        _preferences->putInt(preference_network_custom_irq, 9);
+        _preferences->putInt(preference_network_custom_rst, 10);
+        _preferences->putInt(preference_network_custom_sck, 11);
+        _preferences->putInt(preference_network_custom_miso, 12);
+        _preferences->putInt(preference_network_custom_mosi, 13);
+        _preferences->putBool(preference_ntw_reconfigure, true);
+#endif
         _preferences->putInt(preference_network_hardware, hardwareDetect);
     }
 
-    if(strcmp(WiFi_fallbackDetect, "wifi_fallback") == 0)
+    if(wifiFallback == true)
     {
-        #ifndef CONFIG_IDF_TARGET_ESP32H2
-        if(_preferences->getBool(preference_network_wifi_fallback_disabled) && !_firstBootAfterDeviceChange)
+#ifndef CONFIG_IDF_TARGET_ESP32H2
+        if(!_firstBootAfterDeviceChange)
         {
             Log->println(F("Failed to connect to network. Wi-Fi fallback is disabled, rebooting."));
-            memset(WiFi_fallbackDetect, 0, sizeof(WiFi_fallbackDetect));
+            wifiFallback = false;
             sleep(5);
             restartEsp(RestartReason::NetworkDeviceCriticalFailureNoWifiFallback);
         }
 
         Log->println(F("Switching to Wi-Fi device as fallback."));
         _networkDeviceType = NetworkDeviceType::WiFi;
-        #else
+#else
         int custEth = _preferences->getInt(preference_network_custom_phy, 0);
 
-        if(custEth<3) custEth++;
-        else custEth = 0;
+        if(custEth<3)
+        {
+            custEth++;
+        }
+        else
+        {
+            custEth = 0;
+        }
         _preferences->putInt(preference_network_custom_phy, custEth);
         _preferences->putBool(preference_ntw_reconfigure, true);
-        #endif
+#endif
     }
     else
     {
@@ -122,8 +129,7 @@ void NukiNetwork::setupDevice()
     _device = NetworkDeviceInstantiator::Create(_networkDeviceType, _hostname, _preferences, _ipConfiguration);
 
     Log->print(F("Network device: "));
-    Log->print(_device->deviceName());
-
+    Log->println(_device->deviceName());
 
 #ifndef NUKI_HUB_UPDATER
     _device->mqttOnConnect([&](bool sessionPresent)
@@ -134,12 +140,22 @@ void NukiNetwork::setupDevice()
         {
             onMqttDisconnect(reason);
         });
-    #endif
+#endif
 }
 
 void NukiNetwork::reconfigureDevice()
 {
     _device->reconfigure();
+}
+
+void NukiNetwork::scan(bool passive, bool async)
+{
+    _device->scan(passive, async);
+}
+
+bool NukiNetwork::isApOpen()
+{
+    return _device->isApOpen();
 }
 
 const String NukiNetwork::networkDeviceName() const
@@ -162,14 +178,24 @@ void NukiNetwork::setKeepAliveCallback(std::function<void()> reconnectTick)
     _keepAliveCallback = reconnectTick;
 }
 
+
 void NukiNetwork::clearWifiFallback()
 {
-    memset(WiFi_fallbackDetect, 0, sizeof(WiFi_fallbackDetect));
+    wifiFallback = false;
 }
 
-NetworkDevice *NukiNetwork::device()
+bool NukiNetwork::isConnected()
 {
-    return _device;
+    return _device->isConnected();
+}
+
+bool NukiNetwork::wifiConnected()
+{
+    if(_networkDeviceType != NetworkDeviceType::WiFi)
+    {
+        return true;
+    }
+    else return _device->isConnected();
 }
 
 #ifdef NUKI_HUB_UPDATER
@@ -182,6 +208,7 @@ void NukiNetwork::initialize()
         _hostname = "nukihub";
         _preferences->putString(preference_hostname, _hostname);
     }
+
     strcpy(_hostnameArr, _hostname.c_str());
     _device->initialize();
 
@@ -197,111 +224,116 @@ bool NukiNetwork::update()
 #else
 void NukiNetwork::initialize()
 {
-    _hostname = _preferences->getString(preference_hostname, "");
-
-    if(_hostname == "")
-    {
-        _hostname = "nukihub";
-        _preferences->putString(preference_hostname, _hostname);
-    }
-
-    _mqttPort = _preferences->getInt(preference_mqtt_broker_port, 0);
-
-    if(_mqttPort == 0)
-    {
-        _mqttPort = 1883;
-        _preferences->putInt(preference_mqtt_broker_port, _mqttPort);
-    }
-
-    strcpy(_hostnameArr, _hostname.c_str());
-    _device->initialize();
-
-    Log->print(F("Host name: "));
-    Log->println(_hostname);
-
-    String brokerAddr = _preferences->getString(preference_mqtt_broker);
-    strcpy(_mqttBrokerAddr, brokerAddr.c_str());
-
-    String mqttUser = _preferences->getString(preference_mqtt_user);
-    if(mqttUser.length() > 0)
-    {
-        size_t len = mqttUser.length();
-        for(int i=0; i < len; i++)
-        {
-            _mqttUser[i] = mqttUser.charAt(i);
-        }
-    }
-
-    String mqttPass = _preferences->getString(preference_mqtt_password);
-    if(mqttPass.length() > 0)
-    {
-        size_t len = mqttPass.length();
-        for(int i=0; i < len; i++)
-        {
-            _mqttPass[i] = mqttPass.charAt(i);
-        }
-    }
-
-    Log->print(F("MQTT Broker: "));
-    Log->print(_mqttBrokerAddr);
-    Log->print(F(":"));
-    Log->println(_mqttPort);
-
-    _device->mqttSetClientId(_hostnameArr);
-    _device->mqttSetCleanSession(MQTT_CLEAN_SESSIONS);
-    _device->mqttSetKeepAlive(MQTT_KEEP_ALIVE);
-
-    char gpioPath[250];
-    bool rebGpio = rebuildGpio();
-
-    if(rebGpio)
-    {
-        Log->println(F("Rebuild MQTT GPIO structure"));
-    }
-    for (const auto &pinEntry: _gpio->pinConfiguration())
-    {
-        switch (pinEntry.role)
-        {
-            case PinRole::GeneralInputPullDown:
-            case PinRole::GeneralInputPullUp:
-                if(rebGpio)
-                {
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
-                    publishString(_lockPath.c_str(), gpioPath, "input", false);
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                    publishString(_lockPath.c_str(), gpioPath, std::to_string(digitalRead(pinEntry.pin)).c_str(), false);
-                }
-                break;
-            case PinRole::GeneralOutput:
-                if(rebGpio)
-                {
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
-                    publishString(_lockPath.c_str(), gpioPath, "output", false);
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                    publishString(_lockPath.c_str(), gpioPath, "0", false);
-                }
-                buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                subscribe(_lockPath.c_str(), gpioPath);
-                break;
-            default:
-                break;
-        }
-    }
     _gpio->addCallback([this](const GpioAction& action, const int& pin)
     {
         gpioActionCallback(action, pin);
     });
 
-    _discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery, "");
-    _offEnabled = _preferences->getBool(preference_official_hybrid, false);
-    readSettings();
+    if(!disableNetwork)
+    {
+        _hostname = _preferences->getString(preference_hostname, "");
+
+        if(_hostname == "")
+        {
+            _hostname = "nukihub";
+            _preferences->putString(preference_hostname, _hostname);
+        }
+
+        _mqttPort = _preferences->getInt(preference_mqtt_broker_port, 0);
+
+        if(_mqttPort == 0)
+        {
+            _mqttPort = 1883;
+            _preferences->putInt(preference_mqtt_broker_port, _mqttPort);
+        }
+
+        strcpy(_hostnameArr, _hostname.c_str());
+        _device->initialize();
+
+        Log->print(F("Host name: "));
+        Log->println(_hostname);
+
+        String brokerAddr = _preferences->getString(preference_mqtt_broker);
+        strcpy(_mqttBrokerAddr, brokerAddr.c_str());
+
+        String mqttUser = _preferences->getString(preference_mqtt_user);
+        if(mqttUser.length() > 0)
+        {
+            size_t len = mqttUser.length();
+            for(int i=0; i < len; i++)
+            {
+                _mqttUser[i] = mqttUser.charAt(i);
+            }
+        }
+
+        String mqttPass = _preferences->getString(preference_mqtt_password);
+        if(mqttPass.length() > 0)
+        {
+            size_t len = mqttPass.length();
+            for(int i=0; i < len; i++)
+            {
+                _mqttPass[i] = mqttPass.charAt(i);
+
+            }
+        }
+
+        Log->print(F("MQTT Broker: "));
+        Log->print(_mqttBrokerAddr);
+        Log->print(F(":"));
+        Log->println(_mqttPort);
+
+        _device->mqttSetClientId(_hostnameArr);
+        _device->mqttSetCleanSession(MQTT_CLEAN_SESSIONS);
+        _device->mqttSetKeepAlive(MQTT_KEEP_ALIVE);
+
+        char gpioPath[250];
+        bool rebGpio = rebuildGpio();
+
+        if(rebGpio)
+        {
+            Log->println(F("Rebuild MQTT GPIO structure"));
+        }
+        for (const auto &pinEntry: _gpio->pinConfiguration())
+        {
+            switch (pinEntry.role)
+            {
+                case PinRole::GeneralInputPullDown:
+                case PinRole::GeneralInputPullUp:
+                    if(rebGpio)
+                    {
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
+                        publishString(_lockPath.c_str(), gpioPath, "input", false);
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
+                        publishString(_lockPath.c_str(), gpioPath, std::to_string(digitalRead(pinEntry.pin)).c_str(), false);
+                    }
+                    break;
+                case PinRole::GeneralOutput:
+                    if(rebGpio)
+                    {
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
+                        publishString(_lockPath.c_str(), gpioPath, "output", false);
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
+                        publishString(_lockPath.c_str(), gpioPath, "0", false);
+                    }
+                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
+                    subscribe(_lockPath.c_str(), gpioPath);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        _discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery, "");
+        _offEnabled = _preferences->getBool(preference_official_hybrid_enabled, false);
+        readSettings();
+    }
 }
 
 void NukiNetwork::readSettings()
 {
+    _disableNetworkIfNotConnected = _preferences->getBool(preference_disable_network_not_connected, false);
     _restartOnDisconnect = _preferences->getBool(preference_restart_on_disconnect, false);
     _checkUpdates = _preferences->getBool(preference_check_updates, false);
-    _reconnectNetworkOnMqttDisconnect = _preferences->getBool(preference_recon_netw_on_mqtt_discon, false);
     _rssiPublishInterval = _preferences->getInt(preference_rssi_publish_interval, 0) * 1000;
 
     if(_rssiPublishInterval == 0)
@@ -322,15 +354,26 @@ void NukiNetwork::readSettings()
 
 bool NukiNetwork::update()
 {
-    int64_t ts = (esp_timer_get_time() / 1000);
+    int64_t ts = espMillis();
     _device->update();
 
-    if(!_mqttEnabled)
+    if(_networkTimeout > 0 && (ts - _lastConnectedTs > _networkTimeout * 1000) && ts > 60000)
     {
-        return true;
+        if(!_webEnabled)
+        {
+            forceEnableWebServer = true;
+        }
+        Log->println("Network timeout has been reached, restarting ...");
+        delay(200);
+        restartEsp(RestartReason::NetworkTimeoutWatchdog);
     }
 
-    if(!_device->isConnected() || (_mqttConnectCounter > 15 && _reconnectNetworkOnMqttDisconnect && !_firstConnect))
+    if(disableNetwork || !_mqttEnabled || _device->isApOpen())
+    {
+        return false;
+    }
+
+    if(!_device->isConnected() || (_mqttConnectCounter > 15 && !_firstConnect))
     {
         _mqttConnectCounter = 0;
 
@@ -339,32 +382,22 @@ bool NukiNetwork::update()
             _device->mqttDisconnect(true);
         }
 
-        if(!_webEnabled) forceEnableWebServer = true;
-        if(_restartOnDisconnect && (esp_timer_get_time() / 1000) > 60000) restartEsp(RestartReason::RestartOnDisconnectWatchdog);
-
-        Log->println(F("Network not connected. Trying reconnect."));
-        ReconnectStatus reconnectStatus = _device->reconnect(true);
-
-        switch(reconnectStatus)
+        if(!_webEnabled)
         {
-            case ReconnectStatus::CriticalFailure:
-                strcpy(WiFi_fallbackDetect, "wifi_fallback");
-                Log->println("Network device has a critical failure, enable fallback to Wi-Fi and reboot.");
-                delay(200);
-                restartEsp(RestartReason::NetworkDeviceCriticalFailure);
-                break;
-            case ReconnectStatus::Success:
-                memset(WiFi_fallbackDetect, 0, sizeof(WiFi_fallbackDetect));
-                Log->print(F("Reconnect successful: IP: "));
-                Log->println(_device->localIP());
-                break;
-            case ReconnectStatus::Failure:
-                Log->println(F("Reconnect failed"));
-                break;
+            forceEnableWebServer = true;
+        }
+        if(_restartOnDisconnect && espMillis() > 60000)
+        {
+            restartEsp(RestartReason::RestartOnDisconnectWatchdog);
+        }
+        else if(_disableNetworkIfNotConnected && espMillis() > 60000)
+        {
+            disableNetwork = true;
+            restartEsp(RestartReason::DisableNetworkIfNotConnected);
         }
     }
 
-    if(_logIp && device()->isConnected() && !_device->localIP().equals("0.0.0.0"))
+    if(_logIp && _device->isConnected() && !_device->localIP().equals("0.0.0.0"))
     {
         _logIp = false;
         Log->print(F("IP: "));
@@ -381,6 +414,7 @@ bool NukiNetwork::update()
             _mqttConnectCounter++;
             return false;
         }
+
         _mqttConnectCounter = 0;
         if(forceEnableWebServer && !_webEnabled)
         {
@@ -447,21 +481,26 @@ bool NukiNetwork::update()
             JsonDocument doc;
 
             NetworkClientSecure *client = new NetworkClientSecure;
-            if (client) {
+            if (client)
+            {
                 client->setCACertBundle(x509_crt_imported_bundle_bin_start, x509_crt_imported_bundle_bin_end - x509_crt_imported_bundle_bin_start);
                 {
                     HTTPClient https;
                     https.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
                     https.useHTTP10(true);
 
-                    if (https.begin(*client, GITHUB_OTA_MANIFEST_URL)) {
+                    if (https.begin(*client, GITHUB_OTA_MANIFEST_URL))
+                    {
                         int httpResponseCode = https.GET();
 
                         if (httpResponseCode == HTTP_CODE_OK || httpResponseCode == HTTP_CODE_MOVED_PERMANENTLY)
                         {
                             DeserializationError jsonError = deserializeJson(doc, https.getStream());
 
-                            if (!jsonError) { otaManifestSuccess = true; }
+                            if (!jsonError)
+                            {
+                                otaManifestSuccess = true;
+                            }
                         }
                     }
                     https.end();
@@ -473,14 +512,29 @@ bool NukiNetwork::update()
             {
                 String currentVersion = NUKI_HUB_VERSION;
 
-                if(atof(doc["release"]["version"]) >= atof(currentVersion.c_str())) _latestVersion = doc["release"]["fullversion"];
-                else if(currentVersion.indexOf("beta") > 0) _latestVersion = doc["beta"]["fullversion"];
-                else if(currentVersion.indexOf("master") > 0) _latestVersion = doc["master"]["fullversion"];
-                else _latestVersion = doc["release"]["fullversion"];
+                if(atof(doc["release"]["version"]) >= atof(currentVersion.c_str()))
+                {
+                    _latestVersion = doc["release"]["fullversion"];
+                }
+                else if(currentVersion.indexOf("beta") > 0)
+                {
+                    _latestVersion = doc["beta"]["fullversion"];
+                }
+                else if(currentVersion.indexOf("master") > 0)
+                {
+                    _latestVersion = doc["master"]["fullversion"];
+                }
+                else
+                {
+                    _latestVersion = doc["release"]["fullversion"];
+                }
 
                 publishString(_maintenancePathPrefix, mqtt_topic_info_nuki_hub_latest, _latestVersion, true);
 
-                if(strcmp(_latestVersion, _preferences->getString(preference_latest_version).c_str()) != 0) _preferences->putString(preference_latest_version, _latestVersion);
+                if(strcmp(_latestVersion, _preferences->getString(preference_latest_version).c_str()) != 0)
+                {
+                    _preferences->putString(preference_latest_version, _latestVersion);
+                }
             }
         }
     }
@@ -489,7 +543,7 @@ bool NukiNetwork::update()
     {
         uint8_t pin = gpioTs.first;
         int64_t ts = gpioTs.second;
-        if(ts != 0 && (((esp_timer_get_time() / 1000) - ts) >= GPIO_DEBOUNCE_TIME))
+        if(ts != 0 && ((espMillis() - ts) >= GPIO_DEBOUNCE_TIME))
         {
             _gpioTs[pin] = 0;
 
@@ -508,16 +562,15 @@ bool NukiNetwork::update()
     return true;
 }
 
-
 void NukiNetwork::onMqttConnect(const bool &sessionPresent)
 {
-    _connectReplyReceived = true;
+    Log->println("MQTT Connected");
+    _connectReplyReceived = false;
 }
 
 void NukiNetwork::onMqttDisconnect(const espMqttClientTypes::DisconnectReason &reason)
 {
     _connectReplyReceived = false;
-
     Log->print("MQTT disconnected. Reason: ");
     switch(reason)
     {
@@ -742,7 +795,7 @@ void NukiNetwork::parseGpioTopics(const espMqttClientTypes::MessageProperties &p
 
 void NukiNetwork::gpioActionCallback(const GpioAction &action, const int &pin)
 {
-    _gpioTs[pin] = (esp_timer_get_time() / 1000);
+    _gpioTs[pin] = espMillis();
 }
 
 void NukiNetwork::disableAutoRestarts()
@@ -754,11 +807,6 @@ void NukiNetwork::disableAutoRestarts()
 int NukiNetwork::mqttConnectionState()
 {
     return _mqttConnectionState;
-}
-
-bool NukiNetwork::encryptionSupported()
-{
-    return _device->supportsEncryption();
 }
 
 bool NukiNetwork::mqttRecentlyConnected()
@@ -839,11 +887,11 @@ void NukiNetwork::publishBool(const char* prefix, const char *topic, const bool 
     _device->mqttPublish(path, MQTT_QOS_LEVEL, retain, str);
 }
 
-bool NukiNetwork::publishString(const char* prefix, const char *topic, const char *value, bool retain)
+void NukiNetwork::publishString(const char* prefix, const char *topic, const char *value, bool retain)
 {
     char path[200] = {0};
     buildMqttPath(path, { prefix, topic });
-    return _device->mqttPublish(path, MQTT_QOS_LEVEL, retain, value) > 0;
+    _device->mqttPublish(path, MQTT_QOS_LEVEL, retain, value);
 }
 
 void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, const char *softwareVersion, const char *hardwareVersion, const char* availabilityTopic, const bool& hasKeypad, char* lockAction, char* unlockAction, char* openAction)
@@ -874,16 +922,20 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     json["name"] = nullptr;
     json["unique_id"] = String(uidString) + "_lock";
     json["cmd_t"] = String("~") + String(mqtt_topic_lock_action);
-    json["avty"]["t"] = availabilityTopic;
+    json["avty"][0]["t"] = availabilityTopic;
     json["pl_lock"] = lockAction;
     json["pl_unlk"] = unlockAction;
 
     uint32_t aclPrefs[17];
     _preferences->getBytes(preference_acl, &aclPrefs, sizeof(aclPrefs));
-    if((int)aclPrefs[2]) json["pl_open"] = openAction;
+
+    if((strcmp(deviceType, "SmartLock") == 0 && (int)aclPrefs[2]) || (strcmp(deviceType, "SmartLock") != 0 && (int)aclPrefs[11]))
+    {
+        json["pl_open"] = openAction;
+    }
 
     json["stat_t"] = String("~") + mqtt_topic_lock_ha_state;
-    json["stat_jammed"] = "jammed";
+    json["stat_jam"] = "jammed";
     json["stat_locked"] = "locked";
     json["stat_locking"] = "locking";
     json["stat_unlocked"] = "unlocked";
@@ -915,9 +967,11 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     {{(char*)"pl_on", (char*)"1"},
-                      {(char*)"pl_off", (char*)"0"},
-                      {(char*)"val_tpl", (char*)"{{value_json.critical}}" }});
+    {
+        {(char*)"pl_on", (char*)"1"},
+        {(char*)"pl_off", (char*)"0"},
+        {(char*)"val_tpl", (char*)"{{value_json.critical}}" }
+    });
 
     // Battery voltage
     publishHassTopic("sensor",
@@ -933,8 +987,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "measurement",
                      "diagnostic",
                      "",
-                     { {(char*)"unit_of_meas", (char*)"V"},
-                       {(char*)"val_tpl", (char*)"{{value_json.batteryVoltage}}" }});
+    {
+        {(char*)"unit_of_meas", (char*)"V"},
+        {(char*)"val_tpl", (char*)"{{value_json.batteryVoltage}}" }
+    });
 
     // Trigger
     publishHassTopic("sensor",
@@ -950,7 +1006,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" } });
+    { { (char*)"en", (char*)"true" } });
 
     // MQTT Connected
     publishHassTopic("binary_sensor",
@@ -966,9 +1022,11 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     {{(char*)"pl_on", (char*)"online"},
-                      {(char*)"pl_off", (char*)"offline"},
-                      {(char*)"ic", (char*)"mdi:lan-connect"}});
+    {
+        {(char*)"pl_on", (char*)"online"},
+        {(char*)"pl_off", (char*)"offline"},
+        {(char*)"ic", (char*)"mdi:lan-connect"}
+    });
 
     // Reset
     publishHassTopic("switch",
@@ -984,13 +1042,15 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      String("~") + mqtt_topic_reset,
-                     { { (char*)"ic", (char*)"mdi:restart" },
-                       { (char*)"pl_on", (char*)"1" },
-                       { (char*)"pl_off", (char*)"0" },
-                       { (char*)"stat_on", (char*)"1" },
-                       { (char*)"stat_off", (char*)"0" }});
+    {
+        { (char*)"ic", (char*)"mdi:restart" },
+        { (char*)"pl_on", (char*)"1" },
+        { (char*)"pl_off", (char*)"0" },
+        { (char*)"stat_on", (char*)"1" },
+        { (char*)"stat_off", (char*)"0" }
+    });
 
-     // Network device
+    // Network device
     publishHassTopic("sensor",
                      "network_device",
                      uidString,
@@ -1004,7 +1064,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" }});
+    { { (char*)"en", (char*)"true" }});
 
     // Nuki Hub Webserver enabled
     publishHassTopic("switch",
@@ -1020,12 +1080,14 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      _lockPath + mqtt_topic_webserver_action,
-                     { { (char*)"pl_on", (char*)"1" },
-                       { (char*)"pl_off", (char*)"0" },
-                       { (char*)"stat_on", (char*)"1" },
-                       { (char*)"stat_off", (char*)"0" }});
+    {
+        { (char*)"pl_on", (char*)"1" },
+        { (char*)"pl_off", (char*)"0" },
+        { (char*)"stat_on", (char*)"1" },
+        { (char*)"stat_off", (char*)"0" }
+    });
 
-     // Uptime
+    // Uptime
     publishHassTopic("sensor",
                      "uptime",
                      uidString,
@@ -1035,15 +1097,18 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      baseTopic,
                      _lockPath + mqtt_topic_uptime,
                      deviceType,
-                     "",
+                     "duration",
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" }});
+    {
+        { (char*)"en", (char*)"true" },
+        { (char*)"unit_of_meas", (char*)"min"}
+    });
 
     if(_preferences->getBool(preference_mqtt_log_enabled, false))
     {
-         // MQTT Log
+        // MQTT Log
         publishHassTopic("sensor",
                          "mqtt_log",
                          uidString,
@@ -1057,7 +1122,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                          "",
                          "diagnostic",
                          "",
-                         { { (char*)"en", (char*)"true" }});
+        { { (char*)"en", (char*)"true" }});
     }
     else
     {
@@ -1067,6 +1132,9 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
     if(_offEnabled)
     {
         // Hybrid connected
+        String hybridPath = _lockPath;
+        hybridPath.concat("/lock");
+        hybridPath.concat(mqtt_hybrid_state);
         publishHassTopic("binary_sensor",
                          "hybrid_connected",
                          uidString,
@@ -1074,15 +1142,17 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                          "Hybrid connected",
                          name,
                          baseTopic,
-                         _lockPath + mqtt_hybrid_state,
+                         hybridPath,
                          deviceType,
                          "",
                          "",
                          "diagnostic",
                          "",
-                         { {(char*)"pl_on", (char*)"1"},
-                           {(char*)"pl_off", (char*)"0"},
-                           { (char*)"en", (char*)"true" }});
+        {
+            {(char*)"pl_on", (char*)"1"},
+            {(char*)"pl_off", (char*)"0"},
+            { (char*)"en", (char*)"true" }
+        });
     }
     else
     {
@@ -1103,8 +1173,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" },
-                       {(char*)"ic", (char*)"mdi:counter"}});
+    {
+        { (char*)"en", (char*)"true" },
+        {(char*)"ic", (char*)"mdi:counter"}
+    });
 
     // Hardware version
     publishHassTopic("sensor",
@@ -1120,8 +1192,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" },
-                       {(char*)"ic", (char*)"mdi:counter"}});
+    {
+        { (char*)"en", (char*)"true" },
+        {(char*)"ic", (char*)"mdi:counter"}
+    });
 
     // Nuki Hub version
     publishHassTopic("sensor",
@@ -1137,8 +1211,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" },
-                       {(char*)"ic", (char*)"mdi:counter"}});
+    {
+        { (char*)"en", (char*)"true" },
+        {(char*)"ic", (char*)"mdi:counter"}
+    });
 
     // Nuki Hub build
     publishHassTopic("sensor",
@@ -1154,8 +1230,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" },
-                       {(char*)"ic", (char*)"mdi:counter"}});
+    {
+        { (char*)"en", (char*)"true" },
+        {(char*)"ic", (char*)"mdi:counter"}
+    });
 
     // Nuki Hub restart reason
     publishHassTopic("sensor",
@@ -1171,7 +1249,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" }});
+    { { (char*)"en", (char*)"true" }});
 
     // Nuki Hub restart reason ESP
     publishHassTopic("sensor",
@@ -1187,7 +1265,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" }});
+    { { (char*)"en", (char*)"true" }});
 
     if(_checkUpdates)
     {
@@ -1205,8 +1283,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                          "",
                          "diagnostic",
                          "",
-                         { { (char*)"en", (char*)"true" },
-                           {(char*)"ic", (char*)"mdi:counter"}});
+        {
+            { (char*)"en", (char*)"true" },
+            {(char*)"ic", (char*)"mdi:counter"}
+        });
 
         // NUKI Hub update
         char latest_version_topic[250];
@@ -1228,10 +1308,12 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                              "",
                              "diagnostic",
                              "",
-                             { { (char*)"en", (char*)"true" },
-                               { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
-                               { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
-                               { (char*)"l_ver_t", (char*)latest_version_topic }});
+            {
+                { (char*)"en", (char*)"true" },
+                { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
+                { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
+                { (char*)"l_ver_t", (char*)latest_version_topic }
+            });
         }
         else
         {
@@ -1248,11 +1330,13 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                              "",
                              "diagnostic",
                              _lockPath + mqtt_topic_update,
-                             { { (char*)"en", (char*)"true" },
-                               { (char*)"pl_inst", (char*)"1" },
-                               { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
-                               { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
-                               { (char*)"l_ver_t", (char*)latest_version_topic }});
+            {
+                { (char*)"en", (char*)"true" },
+                { (char*)"pl_inst", (char*)"1" },
+                { (char*)"ent_pic", (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/master/icon/favicon-32x32.png" },
+                { (char*)"rel_u", (char*)GITHUB_LATEST_RELEASE_URL },
+                { (char*)"l_ver_t", (char*)latest_version_topic }
+            });
         }
     }
     else
@@ -1275,8 +1359,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"en", (char*)"true" },
-                       {(char*)"ic", (char*)"mdi:ip"}});
+    {
+        { (char*)"en", (char*)"true" },
+        {(char*)"ic", (char*)"mdi:ip"}
+    });
 
     // Query Lock State
     publishHassTopic("button",
@@ -1292,8 +1378,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      String("~") + mqtt_topic_query_lockstate,
-                     { { (char*)"en", (char*)"false" },
-                       { (char*)"pl_prs", (char*)"1" }});
+    {
+        { (char*)"en", (char*)"false" },
+        { (char*)"pl_prs", (char*)"1" }
+    });
 
     // Query Config
     publishHassTopic("button",
@@ -1309,8 +1397,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      String("~") + mqtt_topic_query_config,
-                     { { (char*)"en", (char*)"false" },
-                       { (char*)"pl_prs", (char*)"1" }});
+    {
+        { (char*)"en", (char*)"false" },
+        { (char*)"pl_prs", (char*)"1" }
+    });
 
     // Query Lock State Command result
     publishHassTopic("button",
@@ -1326,8 +1416,10 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "",
                      "diagnostic",
                      String("~") + mqtt_topic_query_lockstate_command_result,
-                     { { (char*)"en", (char*)"false" },
-                       { (char*)"pl_prs", (char*)"1" }});
+    {
+        { (char*)"en", (char*)"false" },
+        { (char*)"pl_prs", (char*)"1" }
+    });
 
     publishHassTopic("sensor",
                      "bluetooth_signal_strength",
@@ -1342,7 +1434,7 @@ void NukiNetwork::publishHASSConfig(char* deviceType, const char* baseTopic, cha
                      "measurement",
                      "diagnostic",
                      "",
-                     { {(char*)"unit_of_meas", (char*)"dBm"} });
+    { {(char*)"unit_of_meas", (char*)"dBm"} });
 }
 
 void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, const char *baseTopic, char *name, char *uidString)
@@ -1375,8 +1467,10 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "",
                          String("~") + mqtt_topic_lock_action,
-                         { { (char*)"en", (char*)"false" },
-                           { (char*)"pl_prs", (char*)"unlatch" }});
+        {
+            { (char*)"en", (char*)"false" },
+            { (char*)"pl_prs", (char*)"unlatch" }
+        });
     }
     else
     {
@@ -1399,8 +1493,10 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "",
                          String("~") + mqtt_topic_lock_action,
-                         { { (char*)"en", (char*)"false" },
-                           { (char*)"pl_prs", (char*)"lockNgo" }});
+        {
+            { (char*)"en", (char*)"false" },
+            { (char*)"pl_prs", (char*)"lockNgo" }
+        });
     }
     else
     {
@@ -1423,8 +1519,10 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "",
                          String("~") + mqtt_topic_lock_action,
-                         { { (char*)"en", (char*)"false" },
-                           { (char*)"pl_prs", (char*)"lockNgoUnlatch" }});
+        {
+            { (char*)"en", (char*)"false" },
+            { (char*)"pl_prs", (char*)"lockNgoUnlatch" }
+        });
     }
     else
     {
@@ -1445,8 +1543,10 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                      "",
                      "diagnostic",
                      String("~") + mqtt_topic_query_battery,
-                     { { (char*)"en", (char*)"false" },
-                       { (char*)"pl_prs", (char*)"1" }});
+    {
+        { (char*)"en", (char*)"false" },
+        { (char*)"pl_prs", (char*)"1" }
+    });
 
     if((int)basicLockConfigAclPrefs[6] == 1)
     {
@@ -1464,13 +1564,15 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:led-variant-on" },
-                           { (char*)"pl_on", (char*)"{ \"ledEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"ledEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.ledEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:led-variant-on" },
+            { (char*)"pl_on", (char*)"{ \"ledEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"ledEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.ledEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -1493,13 +1595,15 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:radiobox-marked" },
-                           { (char*)"pl_on", (char*)"{ \"buttonEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"buttonEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.buttonEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:radiobox-marked" },
+            { (char*)"pl_on", (char*)"{ \"buttonEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"buttonEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.buttonEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -1522,12 +1626,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"autoLockEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"autoLockEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.autoLockEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"autoLockEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"autoLockEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.autoLockEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -1550,12 +1656,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"autoUnLockDisabled\": \"0\"}" },
-                           { (char*)"pl_off", (char*)"{ \"autoUnLockDisabled\": \"1\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.autoUnLockDisabled}}" },
-                           { (char*)"stat_on", (char*)"0" },
-                           { (char*)"stat_off", (char*)"1" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"autoUnLockDisabled\": \"0\"}" },
+            { (char*)"pl_off", (char*)"{ \"autoUnLockDisabled\": \"1\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.autoUnLockDisabled}}" },
+            { (char*)"stat_on", (char*)"0" },
+            { (char*)"stat_off", (char*)"1" }
+        });
     }
     else
     {
@@ -1578,12 +1686,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"singleLock\": \"0\"}" },
-                           { (char*)"pl_off", (char*)"{ \"singleLock\": \"1\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.singleLock}}" },
-                           { (char*)"stat_on", (char*)"0" },
-                           { (char*)"stat_off", (char*)"1" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"singleLock\": \"0\"}" },
+            { (char*)"pl_off", (char*)"{ \"singleLock\": \"1\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.singleLock}}" },
+            { (char*)"stat_on", (char*)"0" },
+            { (char*)"stat_off", (char*)"1" }
+        });
     }
     else
     {
@@ -1603,8 +1713,10 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                      "measurement",
                      "diagnostic",
                      "",
-                     { {(char*)"unit_of_meas", (char*)"%"},
-                       {(char*)"val_tpl", (char*)"{{value_json.level}}" }});
+    {
+        {(char*)"unit_of_meas", (char*)"%"},
+        {(char*)"val_tpl", (char*)"{{value_json.level}}" }
+    });
 
     if((int)basicLockConfigAclPrefs[7] == 1)
     {
@@ -1621,12 +1733,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:brightness-6" },
-                           { (char*)"cmd_tpl", (char*)"{ \"ledBrightness\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.ledBrightness}}" },
-                           { (char*)"min", (char*)"0" },
-                           { (char*)"max", (char*)"5" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:brightness-6" },
+            { (char*)"cmd_tpl", (char*)"{ \"ledBrightness\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.ledBrightness}}" },
+            { (char*)"min", (char*)"0" },
+            { (char*)"max", (char*)"5" }
+        });
     }
     else
     {
@@ -1649,12 +1763,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"autoUnlatch\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"autoUnlatch\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.autoUnlatch}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"autoUnlatch\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"autoUnlatch\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.autoUnlatch}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -1677,12 +1793,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"pairingEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"pairingEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.pairingEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"pairingEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"pairingEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.pairingEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -1704,12 +1822,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:timer-cog-outline" },
-                           { (char*)"cmd_tpl", (char*)"{ \"timeZoneOffset\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.timeZoneOffset}}" },
-                           { (char*)"min", (char*)"0" },
-                           { (char*)"max", (char*)"60" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:timer-cog-outline" },
+            { (char*)"cmd_tpl", (char*)"{ \"timeZoneOffset\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.timeZoneOffset}}" },
+            { (char*)"min", (char*)"0" },
+            { (char*)"max", (char*)"60" }
+        });
     }
     else
     {
@@ -1732,12 +1852,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"dstMode\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"dstMode\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.dstMode}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"dstMode\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"dstMode\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.dstMode}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -1891,11 +2013,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"unlockedPositionOffsetDegrees\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.unlockedPositionOffsetDegrees}}" },
-                           { (char*)"min", (char*)"-90" },
-                           { (char*)"max", (char*)"180" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"unlockedPositionOffsetDegrees\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.unlockedPositionOffsetDegrees}}" },
+            { (char*)"min", (char*)"-90" },
+            { (char*)"max", (char*)"180" }
+        });
     }
     else
     {
@@ -1917,11 +2041,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"lockedPositionOffsetDegrees\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.lockedPositionOffsetDegrees}}" },
-                           { (char*)"min", (char*)"-180" },
-                           { (char*)"max", (char*)"90" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"lockedPositionOffsetDegrees\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.lockedPositionOffsetDegrees}}" },
+            { (char*)"min", (char*)"-180" },
+            { (char*)"max", (char*)"90" }
+        });
     }
     else
     {
@@ -1943,11 +2069,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"singleLockedPositionOffsetDegrees\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.singleLockedPositionOffsetDegrees}}" },
-                           { (char*)"min", (char*)"-180" },
-                           { (char*)"max", (char*)"180" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"singleLockedPositionOffsetDegrees\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.singleLockedPositionOffsetDegrees}}" },
+            { (char*)"min", (char*)"-180" },
+            { (char*)"max", (char*)"180" }
+        });
     }
     else
     {
@@ -1969,11 +2097,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"unlockedToLockedTransitionOffsetDegrees\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.unlockedToLockedTransitionOffsetDegrees}}" },
-                           { (char*)"min", (char*)"-180" },
-                           { (char*)"max", (char*)"180" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"unlockedToLockedTransitionOffsetDegrees\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.unlockedToLockedTransitionOffsetDegrees}}" },
+            { (char*)"min", (char*)"-180" },
+            { (char*)"max", (char*)"180" }
+        });
     }
     else
     {
@@ -1995,11 +2125,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"lockNgoTimeout\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.lockNgoTimeout}}" },
-                           { (char*)"min", (char*)"5" },
-                           { (char*)"max", (char*)"60" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"lockNgoTimeout\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.lockNgoTimeout}}" },
+            { (char*)"min", (char*)"5" },
+            { (char*)"max", (char*)"60" }
+        });
     }
     else
     {
@@ -2062,12 +2194,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"detachedCylinder\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"detachedCylinder\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.detachedCylinder}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"detachedCylinder\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"detachedCylinder\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.detachedCylinder}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2106,12 +2240,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"automaticBatteryTypeDetection\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"automaticBatteryTypeDetection\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.automaticBatteryTypeDetection}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"automaticBatteryTypeDetection\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"automaticBatteryTypeDetection\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.automaticBatteryTypeDetection}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2133,11 +2269,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"unlatchDuration\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.unlatchDuration}}" },
-                           { (char*)"min", (char*)"1" },
-                           { (char*)"max", (char*)"30" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"unlatchDuration\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.unlatchDuration}}" },
+            { (char*)"min", (char*)"1" },
+            { (char*)"max", (char*)"30" }
+        });
     }
     else
     {
@@ -2159,11 +2297,13 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"autoLockTimeOut\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.autoLockTimeOut}}" },
-                           { (char*)"min", (char*)"30" },
-                           { (char*)"max", (char*)"1800" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"autoLockTimeOut\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.autoLockTimeOut}}" },
+            { (char*)"min", (char*)"30" },
+            { (char*)"max", (char*)"1800" }
+        });
     }
     else
     {
@@ -2186,12 +2326,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"nightModeEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"nightModeEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.nightModeEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"nightModeEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"nightModeEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.nightModeEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2214,12 +2356,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pattern", (char*)"([0-1][0-9]|2[0-3]):[0-5][0-9]" },
-                           { (char*)"cmd_tpl", (char*)"{ \"nightModeStartTime\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.nightModeStartTime}}" },
-                           { (char*)"min", (char*)"5" },
-                           { (char*)"max", (char*)"5" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pattern", (char*)"([0-1][0-9]|2[0-3]):[0-5][0-9]" },
+            { (char*)"cmd_tpl", (char*)"{ \"nightModeStartTime\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.nightModeStartTime}}" },
+            { (char*)"min", (char*)"5" },
+            { (char*)"max", (char*)"5" }
+        });
     }
     else
     {
@@ -2242,12 +2386,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pattern", (char*)"([0-1][0-9]|2[0-3]):[0-5][0-9]" },
-                           { (char*)"cmd_tpl", (char*)"{ \"nightModeEndTime\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.nightModeEndTime}}" },
-                           { (char*)"min", (char*)"5" },
-                           { (char*)"max", (char*)"5" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pattern", (char*)"([0-1][0-9]|2[0-3]):[0-5][0-9]" },
+            { (char*)"cmd_tpl", (char*)"{ \"nightModeEndTime\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.nightModeEndTime}}" },
+            { (char*)"min", (char*)"5" },
+            { (char*)"max", (char*)"5" }
+        });
     }
     else
     {
@@ -2270,12 +2416,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"nightModeAutoLockEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"nightModeAutoLockEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.nightModeAutoLockEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"nightModeAutoLockEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"nightModeAutoLockEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.nightModeAutoLockEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2298,12 +2446,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"nightModeAutoUnlockDisabled\": \"0\"}" },
-                           { (char*)"pl_off", (char*)"{ \"nightModeAutoUnlockDisabled\": \"1\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.nightModeAutoUnlockDisabled}}" },
-                           { (char*)"stat_on", (char*)"0" },
-                           { (char*)"stat_off", (char*)"1" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"nightModeAutoUnlockDisabled\": \"0\"}" },
+            { (char*)"pl_off", (char*)"{ \"nightModeAutoUnlockDisabled\": \"1\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.nightModeAutoUnlockDisabled}}" },
+            { (char*)"stat_on", (char*)"0" },
+            { (char*)"stat_off", (char*)"1" }
+        });
     }
     else
     {
@@ -2326,12 +2476,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"nightModeImmediateLockOnStart\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"nightModeImmediateLockOnStart\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.nightModeImmediateLockOnStart}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"nightModeImmediateLockOnStart\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"nightModeImmediateLockOnStart\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.nightModeImmediateLockOnStart}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2354,12 +2506,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"immediateAutoLockEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"immediateAutoLockEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.immediateAutoLockEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"immediateAutoLockEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"immediateAutoLockEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.immediateAutoLockEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2382,12 +2536,14 @@ void NukiNetwork::publishHASSConfigAdditionalLockEntities(char *deviceType, cons
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"autoUpdateEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"autoUpdateEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.autoUpdateEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"autoUpdateEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"autoUpdateEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.autoUpdateEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2410,9 +2566,11 @@ void NukiNetwork::publishHASSConfigDoorSensor(char *deviceType, const char *base
                      "",
                      "",
                      "",
-                     {{(char*)"pl_on", (char*)"doorOpened"},
-                      {(char*)"pl_off", (char*)"doorClosed"},
-                      {(char*)"pl_not_avail", (char*)"unavailable"}});
+    {
+        {(char*)"pl_on", (char*)"doorOpened"},
+        {(char*)"pl_off", (char*)"doorClosed"},
+        {(char*)"pl_not_avail", (char*)"unavailable"}
+    });
 }
 
 void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, const char *baseTopic, char *name, char *uidString)
@@ -2444,8 +2602,10 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "",
                          String("~") + mqtt_topic_lock_action,
-                         { { (char*)"en", (char*)"false" },
-                           { (char*)"pl_prs", (char*)"electricStrikeActuation" }});
+        {
+            { (char*)"en", (char*)"false" },
+            { (char*)"pl_prs", (char*)"electricStrikeActuation" }
+        });
     }
     else
     {
@@ -2465,8 +2625,10 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                      "",
                      "",
                      "",
-                     {{(char*)"pl_on", (char*)"on"},
-                      {(char*)"pl_off", (char*)"off"}});
+    {
+        {(char*)"pl_on", (char*)"on"},
+        {(char*)"pl_off", (char*)"off"}
+    });
 
     if((int)aclPrefs[12] == 1 && (int)aclPrefs[13] == 1)
     {
@@ -2483,11 +2645,13 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "",
                          String("~") + mqtt_topic_lock_action,
-                         {{ (char*)"en", (char*)"true" },
-                          {(char*)"stat_on", (char*)"on"},
-                          {(char*)"stat_off", (char*)"off"},
-                          {(char*)"pl_on", (char*)"activateCM"},
-                          {(char*)"pl_off", (char*)"deactivateCM"}});
+        {
+            { (char*)"en", (char*)"true" },
+            {(char*)"stat_on", (char*)"on"},
+            {(char*)"stat_off", (char*)"off"},
+            {(char*)"pl_on", (char*)"activateCM"},
+            {(char*)"pl_off", (char*)"deactivateCM"}
+        });
     }
     else
     {
@@ -2507,8 +2671,10 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                      "",
                      "",
                      "",
-                     {{(char*)"pl_on", (char*)"ring"},
-                      {(char*)"pl_off", (char*)"standby"}});
+    {
+        {(char*)"pl_on", (char*)"ring"},
+        {(char*)"pl_off", (char*)"standby"}
+    });
 
     JsonDocument json;
     json = createHassJson(uidString, "_ring_event", "Ring", name, baseTopic, String("~") + mqtt_topic_lock_ring, deviceType, "doorbell", "", "", "", {{(char*)"val_tpl", (char*)"{ \"event_type\": \"{{ value }}\" }"}});
@@ -2534,13 +2700,15 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:led-variant-on" },
-                           { (char*)"pl_on", (char*)"{ \"ledEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"ledEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.ledEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:led-variant-on" },
+            { (char*)"pl_on", (char*)"{ \"ledEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"ledEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.ledEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2563,13 +2731,15 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:radiobox-marked" },
-                           { (char*)"pl_on", (char*)"{ \"buttonEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"buttonEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.buttonEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:radiobox-marked" },
+            { (char*)"pl_on", (char*)"{ \"buttonEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"buttonEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.buttonEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2591,14 +2761,16 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:volume-source" },
-                           { (char*)"cmd_tpl", (char*)"{ \"soundLevel\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.soundLevel}}" },
-                           { (char*)"min", (char*)"0" },
-                           { (char*)"max", (char*)"255" },
-                           { (char*)"mode", (char*)"slider" },
-                           { (char*)"step", (char*)"25.5" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:volume-source" },
+            { (char*)"cmd_tpl", (char*)"{ \"soundLevel\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.soundLevel}}" },
+            { (char*)"min", (char*)"0" },
+            { (char*)"max", (char*)"255" },
+            { (char*)"mode", (char*)"slider" },
+            { (char*)"step", (char*)"25.5" }
+        });
     }
     else
     {
@@ -2621,12 +2793,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"pairingEnabled\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"pairingEnabled\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.pairingEnabled}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"pairingEnabled\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"pairingEnabled\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.pairingEnabled}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2648,12 +2822,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"ic", (char*)"mdi:timer-cog-outline" },
-                           { (char*)"cmd_tpl", (char*)"{ \"timeZoneOffset\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.timeZoneOffset}}" },
-                           { (char*)"min", (char*)"0" },
-                           { (char*)"max", (char*)"60" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"ic", (char*)"mdi:timer-cog-outline" },
+            { (char*)"cmd_tpl", (char*)"{ \"timeZoneOffset\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.timeZoneOffset}}" },
+            { (char*)"min", (char*)"0" },
+            { (char*)"max", (char*)"60" }
+        });
     }
     else
     {
@@ -2676,12 +2852,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"dstMode\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"dstMode\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.dstMode}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"dstMode\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"dstMode\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.dstMode}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2868,12 +3046,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"busModeSwitch\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"busModeSwitch\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.busModeSwitch}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"busModeSwitch\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"busModeSwitch\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.busModeSwitch}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2895,10 +3075,12 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"shortCircuitDuration\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.shortCircuitDuration}}" },
-                           { (char*)"min", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"shortCircuitDuration\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.shortCircuitDuration}}" },
+            { (char*)"min", (char*)"0" }
+        });
     }
     else
     {
@@ -2920,12 +3102,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"electricStrikeDelay\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.electricStrikeDelay}}" },
-                           { (char*)"min", (char*)"0" },
-                           { (char*)"min", (char*)"30000" },
-                           { (char*)"step", (char*)"3000" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"electricStrikeDelay\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.electricStrikeDelay}}" },
+            { (char*)"min", (char*)"0" },
+            { (char*)"max", (char*)"30000" },
+            { (char*)"step", (char*)"3000" }
+        });
     }
     else
     {
@@ -2948,12 +3132,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"randomElectricStrikeDelay\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"randomElectricStrikeDelay\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.randomElectricStrikeDelay}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"randomElectricStrikeDelay\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"randomElectricStrikeDelay\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.randomElectricStrikeDelay}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -2975,12 +3161,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"electricStrikeDuration\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.electricStrikeDuration}}" },
-                           { (char*)"min", (char*)"1000" },
-                           { (char*)"min", (char*)"30000" },
-                           { (char*)"step", (char*)"3000" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"electricStrikeDuration\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.electricStrikeDuration}}" },
+            { (char*)"min", (char*)"1000" },
+            { (char*)"max", (char*)"30000" },
+            { (char*)"step", (char*)"3000" }
+        });
     }
     else
     {
@@ -3003,12 +3191,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"disableRtoAfterRing\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"disableRtoAfterRing\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.disableRtoAfterRing}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"disableRtoAfterRing\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"disableRtoAfterRing\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.disableRtoAfterRing}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -3030,11 +3220,13 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"rtoTimeout\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.rtoTimeout}}" },
-                           { (char*)"min", (char*)"5" },
-                           { (char*)"min", (char*)"60" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"rtoTimeout\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.rtoTimeout}}" },
+            { (char*)"min", (char*)"5" },
+            { (char*)"max", (char*)"60" }
+        });
     }
     else
     {
@@ -3077,12 +3269,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"cmd_tpl", (char*)"{ \"doorbellSuppressionDuration\": \"{{ value }}\" }" },
-                           { (char*)"val_tpl", (char*)"{{value_json.doorbellSuppressionDuration}}" },
-                           { (char*)"min", (char*)"500" },
-                           { (char*)"min", (char*)"10000" },
-                           { (char*)"step", (char*)"1000" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"cmd_tpl", (char*)"{ \"doorbellSuppressionDuration\": \"{{ value }}\" }" },
+            { (char*)"val_tpl", (char*)"{{value_json.doorbellSuppressionDuration}}" },
+            { (char*)"min", (char*)"500" },
+            { (char*)"max", (char*)"10000" },
+            { (char*)"step", (char*)"1000" }
+        });
     }
     else
     {
@@ -3173,12 +3367,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"soundConfirmation\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"soundConfirmation\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.soundConfirmation}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"soundConfirmation\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"soundConfirmation\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.soundConfirmation}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -3259,12 +3455,14 @@ void NukiNetwork::publishHASSConfigAdditionalOpenerEntities(char *deviceType, co
                          "",
                          "config",
                          String("~") + mqtt_topic_config_action,
-                         { { (char*)"en", (char*)"true" },
-                           { (char*)"pl_on", (char*)"{ \"automaticBatteryTypeDetection\": \"1\"}" },
-                           { (char*)"pl_off", (char*)"{ \"automaticBatteryTypeDetection\": \"0\"}" },
-                           { (char*)"val_tpl", (char*)"{{value_json.automaticBatteryTypeDetection}}" },
-                           { (char*)"stat_on", (char*)"1" },
-                           { (char*)"stat_off", (char*)"0" }});
+        {
+            { (char*)"en", (char*)"true" },
+            { (char*)"pl_on", (char*)"{ \"automaticBatteryTypeDetection\": \"1\"}" },
+            { (char*)"pl_off", (char*)"{ \"automaticBatteryTypeDetection\": \"0\"}" },
+            { (char*)"val_tpl", (char*)"{{value_json.automaticBatteryTypeDetection}}" },
+            { (char*)"stat_on", (char*)"1" },
+            { (char*)"stat_off", (char*)"0" }
+        });
     }
     else
     {
@@ -3287,8 +3485,10 @@ void NukiNetwork::publishHASSConfigAccessLog(char *deviceType, const char *baseT
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"ic", (char*)"mdi:format-list-bulleted" },
-                       { (char*)"val_tpl", (char*)"{{ (value_json|selectattr('type', 'eq', 'LockAction')|selectattr('action', 'in', ['Lock', 'Unlock', 'Unlatch'])|first|default).authorizationName|default }}" }});
+    {
+        { (char*)"ic", (char*)"mdi:format-list-bulleted" },
+        { (char*)"val_tpl", (char*)"{{ (value_json|selectattr('type', 'eq', 'LockAction')|selectattr('action', 'in', ['Lock', 'Unlock', 'Unlatch'])|first|default).authorizationName|default }}" }
+    });
 
     String rollingSate = "~";
     rollingSate.concat(mqtt_topic_lock_log_rolling);
@@ -3307,30 +3507,34 @@ void NukiNetwork::publishHASSConfigAccessLog(char *deviceType, const char *baseT
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"ic", (char*)"mdi:format-list-bulleted" },
-                       { (char*)"json_attr_t", (char*)rollingStateChr },
-                       { (char*)"val_tpl", (char*)"{{value_json.index}}" }});
+    {
+        { (char*)"ic", (char*)"mdi:format-list-bulleted" },
+        { (char*)"json_attr_t", (char*)rollingStateChr },
+        { (char*)"val_tpl", (char*)"{{value_json.index}}" }
+    });
 }
 
 void NukiNetwork::publishHASSConfigKeypad(char *deviceType, const char *baseTopic, char *name, char *uidString)
 {
     // Keypad battery critical
-        publishHassTopic("binary_sensor",
-                         "keypad_battery_low",
-                         uidString,
-                         "_keypad_battery_low",
-                         "Keypad battery low",
-                         name,
-                         baseTopic,
-                         String("~") + mqtt_topic_battery_basic_json,
-                         deviceType,
-                         "battery",
-                         "",
-                         "diagnostic",
-                         "",
-                         {{(char*)"pl_on", (char*)"1"},
-                          {(char*)"pl_off", (char*)"0"},
-                          {(char*)"val_tpl", (char*)"{{value_json.keypadCritical}}" }});
+    publishHassTopic("binary_sensor",
+                     "keypad_battery_low",
+                     uidString,
+                     "_keypad_battery_low",
+                     "Keypad battery low",
+                     name,
+                     baseTopic,
+                     String("~") + mqtt_topic_battery_basic_json,
+                     deviceType,
+                     "battery",
+                     "",
+                     "diagnostic",
+                     "",
+    {
+        {(char*)"pl_on", (char*)"1"},
+        {(char*)"pl_off", (char*)"0"},
+        {(char*)"val_tpl", (char*)"{{value_json.keypadCritical}}" }
+    });
 
     // Query Keypad
     publishHassTopic("button",
@@ -3346,8 +3550,10 @@ void NukiNetwork::publishHASSConfigKeypad(char *deviceType, const char *baseTopi
                      "",
                      "diagnostic",
                      String("~") + mqtt_topic_query_keypad,
-                     { { (char*)"en", (char*)"false" },
-                       { (char*)"pl_prs", (char*)"1" }});
+    {
+        { (char*)"en", (char*)"false" },
+        { (char*)"pl_prs", (char*)"1" }
+    });
 
     publishHassTopic("sensor",
                      "keypad_status",
@@ -3362,8 +3568,10 @@ void NukiNetwork::publishHASSConfigKeypad(char *deviceType, const char *baseTopi
                      "",
                      "diagnostic",
                      "",
-                     { { (char*)"ic", (char*)"mdi:drag-vertical" },
-                       { (char*)"val_tpl", (char*)"{{ (value_json|selectattr('type', 'eq', 'KeypadAction')|first|default).completionStatus|default }}" }});
+    {
+        { (char*)"ic", (char*)"mdi:drag-vertical" },
+        { (char*)"val_tpl", (char*)"{{ (value_json|selectattr('type', 'eq', 'KeypadAction')|first|default).completionStatus|default }}" }
+    });
 }
 
 void NukiNetwork::publishHASSWifiRssiConfig(char *deviceType, const char *baseTopic, char *name, char *uidString)
@@ -3386,24 +3594,24 @@ void NukiNetwork::publishHASSWifiRssiConfig(char *deviceType, const char *baseTo
                      "measurement",
                      "diagnostic",
                      "",
-                     { {(char*)"unit_of_meas", (char*)"dBm"} });
+    { {(char*)"unit_of_meas", (char*)"dBm"} });
 }
 
 void NukiNetwork::publishHassTopic(const String& mqttDeviceType,
-                               const String& mqttDeviceName,
-                               const String& uidString,
-                               const String& uidStringPostfix,
-                               const String& displayName,
-                               const String& name,
-                               const String& baseTopic,
-                               const String& stateTopic,
-                               const String& deviceType,
-                               const String& deviceClass,
-                               const String& stateClass,
-                               const String& entityCat,
-                               const String& commandTopic,
-                               std::vector<std::pair<char*, char*>> additionalEntries
-)
+                                   const String& mqttDeviceName,
+                                   const String& uidString,
+                                   const String& uidStringPostfix,
+                                   const String& displayName,
+                                   const String& name,
+                                   const String& baseTopic,
+                                   const String& stateTopic,
+                                   const String& deviceType,
+                                   const String& deviceClass,
+                                   const String& stateClass,
+                                   const String& entityCat,
+                                   const String& commandTopic,
+                                   std::vector<std::pair<char*, char*>> additionalEntries
+                                  )
 {
     if (_discoveryTopic != "")
     {
@@ -3442,12 +3650,12 @@ void NukiNetwork::removeTopic(const String& mqttPath, const String& mqttTopic)
 {
     String path = mqttPath;
     path.concat(mqttTopic);
-   _device->mqttPublish(path.c_str(), MQTT_QOS_LEVEL, true, "");
+    _device->mqttPublish(path.c_str(), MQTT_QOS_LEVEL, true, "");
 
-    #ifdef DEBUG_NUKIHUB
+#ifdef DEBUG_NUKIHUB
     Log->print(F("Removing MQTT topic: "));
     Log->println(path.c_str());
-    #endif
+#endif
 }
 
 
@@ -3553,18 +3761,18 @@ void NukiNetwork::removeHASSConfigTopic(char *deviceType, char *name, char *uidS
 }
 
 JsonDocument NukiNetwork::createHassJson(const String& uidString,
-                             const String& uidStringPostfix,
-                             const String& displayName,
-                             const String& name,
-                             const String& baseTopic,
-                             const String& stateTopic,
-                             const String& deviceType,
-                             const String& deviceClass,
-                             const String& stateClass,
-                             const String& entityCat,
-                             const String& commandTopic,
-                             std::vector<std::pair<char*, char*>> additionalEntries
-)
+        const String& uidStringPostfix,
+        const String& displayName,
+        const String& name,
+        const String& baseTopic,
+        const String& stateTopic,
+        const String& deviceType,
+        const String& deviceClass,
+        const String& stateClass,
+        const String& entityCat,
+        const String& commandTopic,
+        std::vector<std::pair<char*, char*>> additionalEntries
+                                        )
 {
     JsonDocument json;
     json.clear();
@@ -3624,190 +3832,196 @@ JsonDocument NukiNetwork::createHassJson(const String& uidString,
     return json;
 }
 
-void NukiNetwork::batteryTypeToString(const Nuki::BatteryType battype, char* str) {
-  switch (battype) {
+void NukiNetwork::batteryTypeToString(const Nuki::BatteryType battype, char* str)
+{
+    switch (battype)
+    {
     case Nuki::BatteryType::Alkali:
-      strcpy(str, "Alkali");
-      break;
+        strcpy(str, "Alkali");
+        break;
     case Nuki::BatteryType::Accumulators:
-      strcpy(str, "Accumulators");
-      break;
+        strcpy(str, "Accumulators");
+        break;
     case Nuki::BatteryType::Lithium:
-      strcpy(str, "Lithium");
-      break;
+        strcpy(str, "Lithium");
+        break;
     default:
-      strcpy(str, "undefined");
-      break;
-  }
+        strcpy(str, "undefined");
+        break;
+    }
 }
 
-void NukiNetwork::advertisingModeToString(const Nuki::AdvertisingMode advmode, char* str) {
-  switch (advmode) {
+void NukiNetwork::advertisingModeToString(const Nuki::AdvertisingMode advmode, char* str)
+{
+    switch (advmode)
+    {
     case Nuki::AdvertisingMode::Automatic:
-      strcpy(str, "Automatic");
-      break;
+        strcpy(str, "Automatic");
+        break;
     case Nuki::AdvertisingMode::Normal:
-      strcpy(str, "Normal");
-      break;
+        strcpy(str, "Normal");
+        break;
     case Nuki::AdvertisingMode::Slow:
-      strcpy(str, "Slow");
-      break;
+        strcpy(str, "Slow");
+        break;
     case Nuki::AdvertisingMode::Slowest:
-      strcpy(str, "Slowest");
-      break;
+        strcpy(str, "Slowest");
+        break;
     default:
-      strcpy(str, "undefined");
-      break;
-  }
+        strcpy(str, "undefined");
+        break;
+    }
 }
 
-void NukiNetwork::timeZoneIdToString(const Nuki::TimeZoneId timeZoneId, char* str) {
-  switch (timeZoneId) {
+void NukiNetwork::timeZoneIdToString(const Nuki::TimeZoneId timeZoneId, char* str)
+{
+    switch (timeZoneId)
+    {
     case Nuki::TimeZoneId::Africa_Cairo:
-      strcpy(str, "Africa/Cairo");
-      break;
+        strcpy(str, "Africa/Cairo");
+        break;
     case Nuki::TimeZoneId::Africa_Lagos:
-      strcpy(str, "Africa/Lagos");
-      break;
+        strcpy(str, "Africa/Lagos");
+        break;
     case Nuki::TimeZoneId::Africa_Maputo:
-      strcpy(str, "Africa/Maputo");
-      break;
+        strcpy(str, "Africa/Maputo");
+        break;
     case Nuki::TimeZoneId::Africa_Nairobi:
-      strcpy(str, "Africa/Nairobi");
-      break;
+        strcpy(str, "Africa/Nairobi");
+        break;
     case Nuki::TimeZoneId::America_Anchorage:
-      strcpy(str, "America/Anchorage");
-      break;
+        strcpy(str, "America/Anchorage");
+        break;
     case Nuki::TimeZoneId::America_Argentina_Buenos_Aires:
-      strcpy(str, "America/Argentina/Buenos_Aires");
-      break;
+        strcpy(str, "America/Argentina/Buenos_Aires");
+        break;
     case Nuki::TimeZoneId::America_Chicago:
-      strcpy(str, "America/Chicago");
-      break;
+        strcpy(str, "America/Chicago");
+        break;
     case Nuki::TimeZoneId::America_Denver:
-      strcpy(str, "America/Denver");
-      break;
+        strcpy(str, "America/Denver");
+        break;
     case Nuki::TimeZoneId::America_Halifax:
-      strcpy(str, "America/Halifax");
-      break;
+        strcpy(str, "America/Halifax");
+        break;
     case Nuki::TimeZoneId::America_Los_Angeles:
-      strcpy(str, "America/Los_Angeles");
-      break;
+        strcpy(str, "America/Los_Angeles");
+        break;
     case Nuki::TimeZoneId::America_Manaus:
-      strcpy(str, "America/Manaus");
-      break;
+        strcpy(str, "America/Manaus");
+        break;
     case Nuki::TimeZoneId::America_Mexico_City:
-      strcpy(str, "America/Mexico_City");
-      break;
+        strcpy(str, "America/Mexico_City");
+        break;
     case Nuki::TimeZoneId::America_New_York:
-      strcpy(str, "America/New_York");
-      break;
+        strcpy(str, "America/New_York");
+        break;
     case Nuki::TimeZoneId::America_Phoenix:
-      strcpy(str, "America/Phoenix");
-      break;
+        strcpy(str, "America/Phoenix");
+        break;
     case Nuki::TimeZoneId::America_Regina:
-      strcpy(str, "America/Regina");
-      break;
+        strcpy(str, "America/Regina");
+        break;
     case Nuki::TimeZoneId::America_Santiago:
-      strcpy(str, "America/Santiago");
-      break;
+        strcpy(str, "America/Santiago");
+        break;
     case Nuki::TimeZoneId::America_Sao_Paulo:
-      strcpy(str, "America/Sao_Paulo");
-      break;
+        strcpy(str, "America/Sao_Paulo");
+        break;
     case Nuki::TimeZoneId::America_St_Johns:
-      strcpy(str, "America/St_Johns");
-      break;
+        strcpy(str, "America/St_Johns");
+        break;
     case Nuki::TimeZoneId::Asia_Bangkok:
-      strcpy(str, "Asia/Bangkok");
-      break;
+        strcpy(str, "Asia/Bangkok");
+        break;
     case Nuki::TimeZoneId::Asia_Dubai:
-      strcpy(str, "Asia/Dubai");
-      break;
+        strcpy(str, "Asia/Dubai");
+        break;
     case Nuki::TimeZoneId::Asia_Hong_Kong:
-      strcpy(str, "Asia/Hong_Kong");
-      break;
+        strcpy(str, "Asia/Hong_Kong");
+        break;
     case Nuki::TimeZoneId::Asia_Jerusalem:
-      strcpy(str, "Asia/Jerusalem");
-      break;
+        strcpy(str, "Asia/Jerusalem");
+        break;
     case Nuki::TimeZoneId::Asia_Karachi:
-      strcpy(str, "Asia/Karachi");
-      break;
+        strcpy(str, "Asia/Karachi");
+        break;
     case Nuki::TimeZoneId::Asia_Kathmandu:
-      strcpy(str, "Asia/Kathmandu");
-      break;
+        strcpy(str, "Asia/Kathmandu");
+        break;
     case Nuki::TimeZoneId::Asia_Kolkata:
-      strcpy(str, "Asia/Kolkata");
-      break;
+        strcpy(str, "Asia/Kolkata");
+        break;
     case Nuki::TimeZoneId::Asia_Riyadh:
-      strcpy(str, "Asia/Riyadh");
-      break;
+        strcpy(str, "Asia/Riyadh");
+        break;
     case Nuki::TimeZoneId::Asia_Seoul:
-      strcpy(str, "Asia/Seoul");
-      break;
+        strcpy(str, "Asia/Seoul");
+        break;
     case Nuki::TimeZoneId::Asia_Shanghai:
-      strcpy(str, "Asia/Shanghai");
-      break;
+        strcpy(str, "Asia/Shanghai");
+        break;
     case Nuki::TimeZoneId::Asia_Tehran:
-      strcpy(str, "Asia/Tehran");
-      break;
+        strcpy(str, "Asia/Tehran");
+        break;
     case Nuki::TimeZoneId::Asia_Tokyo:
-      strcpy(str, "Asia/Tokyo");
-      break;
+        strcpy(str, "Asia/Tokyo");
+        break;
     case Nuki::TimeZoneId::Asia_Yangon:
-      strcpy(str, "Asia/Yangon");
-      break;
+        strcpy(str, "Asia/Yangon");
+        break;
     case Nuki::TimeZoneId::Australia_Adelaide:
-      strcpy(str, "Australia/Adelaide");
-      break;
+        strcpy(str, "Australia/Adelaide");
+        break;
     case Nuki::TimeZoneId::Australia_Brisbane:
-      strcpy(str, "Australia/Brisbane");
-      break;
+        strcpy(str, "Australia/Brisbane");
+        break;
     case Nuki::TimeZoneId::Australia_Darwin:
-      strcpy(str, "Australia/Darwin");
-      break;
+        strcpy(str, "Australia/Darwin");
+        break;
     case Nuki::TimeZoneId::Australia_Hobart:
-      strcpy(str, "Australia/Hobart");
-      break;
+        strcpy(str, "Australia/Hobart");
+        break;
     case Nuki::TimeZoneId::Australia_Perth:
-      strcpy(str, "Australia/Perth");
-      break;
+        strcpy(str, "Australia/Perth");
+        break;
     case Nuki::TimeZoneId::Australia_Sydney:
-      strcpy(str, "Australia/Sydney");
-      break;
+        strcpy(str, "Australia/Sydney");
+        break;
     case Nuki::TimeZoneId::Europe_Berlin:
-      strcpy(str, "Europe/Berlin");
-      break;
+        strcpy(str, "Europe/Berlin");
+        break;
     case Nuki::TimeZoneId::Europe_Helsinki:
-      strcpy(str, "Europe/Helsinki");
-      break;
+        strcpy(str, "Europe/Helsinki");
+        break;
     case Nuki::TimeZoneId::Europe_Istanbul:
-      strcpy(str, "Europe/Istanbul");
-      break;
+        strcpy(str, "Europe/Istanbul");
+        break;
     case Nuki::TimeZoneId::Europe_London:
-      strcpy(str, "Europe/London");
-      break;
+        strcpy(str, "Europe/London");
+        break;
     case Nuki::TimeZoneId::Europe_Moscow:
-      strcpy(str, "Europe/Moscow");
-      break;
+        strcpy(str, "Europe/Moscow");
+        break;
     case Nuki::TimeZoneId::Pacific_Auckland:
-      strcpy(str, "Pacific/Auckland");
-      break;
+        strcpy(str, "Pacific/Auckland");
+        break;
     case Nuki::TimeZoneId::Pacific_Guam:
-      strcpy(str, "Pacific/Guam");
-      break;
+        strcpy(str, "Pacific/Guam");
+        break;
     case Nuki::TimeZoneId::Pacific_Honolulu:
-      strcpy(str, "Pacific/Honolulu");
-      break;
+        strcpy(str, "Pacific/Honolulu");
+        break;
     case Nuki::TimeZoneId::Pacific_Pago_Pago:
-      strcpy(str, "Pacific/Pago_Pago");
-      break;
+        strcpy(str, "Pacific/Pago_Pago");
+        break;
     case Nuki::TimeZoneId::None:
-      strcpy(str, "None");
-      break;
+        strcpy(str, "None");
+        break;
     default:
-      strcpy(str, "undefined");
-      break;
-  }
+        strcpy(str, "undefined");
+        break;
+    }
 }
 
 uint16_t NukiNetwork::subscribe(const char *topic, uint8_t qos)
@@ -3829,10 +4043,5 @@ void NukiNetwork::disableMqtt()
 String NukiNetwork::localIP()
 {
     return _device->localIP();
-}
-
-bool NukiNetwork::isConnected()
-{
-    return _device->isConnected();
 }
 #endif

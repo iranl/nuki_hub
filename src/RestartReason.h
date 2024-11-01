@@ -25,6 +25,7 @@ enum class RestartReason
     DeviceUnpaired,
     NukiHubReset,
     ReconfigureWebServer,
+    DisableNetworkIfNotConnected,
     NotApplicable
 };
 
@@ -33,11 +34,8 @@ enum class RestartReason
 extern int restartReason;
 extern uint64_t restartReasonValidDetect;
 extern bool rebuildGpioRequested;
-
 extern RestartReason currentRestartReason;
-
 extern bool restartReason_isValid;
-
 
 inline static void restartEsp(RestartReason reason)
 {
@@ -115,6 +113,8 @@ inline static String getRestartReason()
             return "DeviceUnpaired";
         case RestartReason::NukiHubReset:
             return "NukiHubFactoryReset";
+        case RestartReason::DisableNetworkIfNotConnected:
+            return "NetworkDisabledOnNotConnected";
         case RestartReason::NotApplicable:
             return "NotApplicable";
         default:

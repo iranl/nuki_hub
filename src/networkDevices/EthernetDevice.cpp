@@ -7,45 +7,48 @@
 #endif
 #include "../RestartReason.h"
 
+extern bool ethCriticalFailure;
+extern bool wifiFallback;
+
 EthernetDevice::EthernetDevice(const String& hostname, Preferences* preferences, const IPConfiguration* ipConfiguration, const std::string& deviceName, uint8_t phy_addr, int power, int mdc, int mdio, eth_phy_type_t ethtype, eth_clock_mode_t clock_mode)
-: NetworkDevice(hostname, ipConfiguration),
-  _deviceName(deviceName),
-  _phy_addr(phy_addr),
-  _power(power),
-  _mdc(mdc),
-  _mdio(mdio),
-  _type(ethtype),
-  _clock_mode(clock_mode),
-  _useSpi(false),
-  _preferences(preferences)
+    : NetworkDevice(hostname, ipConfiguration),
+      _deviceName(deviceName),
+      _phy_addr(phy_addr),
+      _power(power),
+      _mdc(mdc),
+      _mdio(mdio),
+      _type(ethtype),
+      _clock_mode(clock_mode),
+      _useSpi(false),
+      _preferences(preferences)
 {
     init();
 }
 
 EthernetDevice::EthernetDevice(const String &hostname,
-                                   Preferences *preferences,
-                                   const IPConfiguration *ipConfiguration,
-                                   const std::string &deviceName,
-                                   uint8_t phy_addr,
-                                   int cs,
-                                   int irq,
-                                   int rst,
-                                   int spi_sck,
-                                   int spi_miso,
-                                   int spi_mosi,
-                                   eth_phy_type_t ethtype)
-        : NetworkDevice(hostname, ipConfiguration),
-          _deviceName(deviceName),
-          _phy_addr(phy_addr),
-          _cs(cs),
-          _irq(irq),
-          _rst(rst),
-          _spi_sck(spi_sck),
-          _spi_miso(spi_miso),
-          _spi_mosi(spi_mosi),
-          _type(ethtype),
-          _useSpi(true),
-          _preferences(preferences)
+                               Preferences *preferences,
+                               const IPConfiguration *ipConfiguration,
+                               const std::string &deviceName,
+                               uint8_t phy_addr,
+                               int cs,
+                               int irq,
+                               int rst,
+                               int spi_sck,
+                               int spi_miso,
+                               int spi_mosi,
+                               eth_phy_type_t ethtype)
+    : NetworkDevice(hostname, ipConfiguration),
+      _deviceName(deviceName),
+      _phy_addr(phy_addr),
+      _cs(cs),
+      _irq(irq),
+      _rst(rst),
+      _spi_sck(spi_sck),
+      _spi_miso(spi_miso),
+      _spi_mosi(spi_mosi),
+      _type(ethtype),
+      _useSpi(true),
+      _preferences(preferences)
 {
     init();
 }
@@ -106,30 +109,45 @@ const String EthernetDevice::deviceName() const
 void EthernetDevice::initialize()
 {
     delay(250);
+    if(ethCriticalFailure)
+    {
+        ethCriticalFailure = false;
+        Log->println(F("Failed to initialize ethernet hardware"));
+        Log->println("Network device has a critical failure, enable fallback to Wi-Fi and reboot.");
+        wifiFallback = true;
+        delay(200);
+        restartEsp(RestartReason::NetworkDeviceCriticalFailure);
+        return;
+    }
 
     Log->println(F("Init Ethernet"));
 
     if(_useSpi)
     {
         Log->println(F("Use SPI"));
+        ethCriticalFailure = true;
         SPI.begin(_spi_sck, _spi_miso, _spi_mosi);
         _hardwareInitialized = ETH.begin(_type, _phy_addr, _cs, _irq, _rst, SPI);
+        ethCriticalFailure = false;
     }
-    #ifdef CONFIG_IDF_TARGET_ESP32
+#ifdef CONFIG_IDF_TARGET_ESP32
     else
     {
         Log->println(F("Use RMII"));
+        ethCriticalFailure = true;
         _hardwareInitialized = ETH.begin(_type, _phy_addr, _mdc, _mdio, _power, _clock_mode);
+        ethCriticalFailure = false;
         if(!_ipConfiguration->dhcpEnabled())
         {
-            _checkIpTs = (esp_timer_get_time() / 1000) + 2000;
+            _checkIpTs = espMillis() + 2000;
         }
     }
-    #endif
+#endif
 
     if(_hardwareInitialized)
     {
         Log->println(F("Ethernet hardware Initialized"));
+        wifiFallback = false;
 
         if(_useSpi && !_ipConfiguration->dhcpEnabled())
         {
@@ -144,84 +162,85 @@ void EthernetDevice::initialize()
     else
     {
         Log->println(F("Failed to initialize ethernet hardware"));
+        Log->println("Network device has a critical failure, enable fallback to Wi-Fi and reboot.");
+        wifiFallback = true;
+        delay(200);
+        restartEsp(RestartReason::NetworkDeviceCriticalFailure);
+        return;
     }
 }
 
 void EthernetDevice::update()
 {
-    NetworkDevice::update();
-
-    if(_checkIpTs != -1)
+    if(_checkIpTs != -1 && _checkIpTs < espMillis())
     {
         if(_ipConfiguration->ipAddress() != ETH.localIP())
         {
             Log->println(F("ETH Set static IP"));
             ETH.config(_ipConfiguration->ipAddress(), _ipConfiguration->defaultGateway(), _ipConfiguration->subnet(), _ipConfiguration->dnsServer());
-            _checkIpTs = (esp_timer_get_time() / 1000) + 2000;
+            _checkIpTs = espMillis() + 5000;
+            return;
         }
-        else
-        {
-            _checkIpTs = -1;
-        }
+        
+        _checkIpTs = -1;
     }
 }
 
 
 void EthernetDevice::onNetworkEvent(arduino_event_id_t event, arduino_event_info_t info)
 {
-    switch (event) {
-        case ARDUINO_EVENT_ETH_START:
-            Log->println("ETH Started");
-            ETH.setHostname(_hostname.c_str());
-            break;
-        case ARDUINO_EVENT_ETH_CONNECTED:
-            Log->println("ETH Connected");
-            if(!localIP().equals("0.0.0.0"))
-            {
-                _connected = true;
-            }
-            break;
-        case ARDUINO_EVENT_ETH_GOT_IP:
-            Log->printf("ETH Got IP: '%s'\n", esp_netif_get_desc(info.got_ip.esp_netif));
-            Log->println(ETH);
-
-            // For RMII devices, this check is handled in the update() method.
-            if(_useSpi && !_ipConfiguration->dhcpEnabled() && _ipConfiguration->ipAddress() != ETH.localIP())
-            {
-                Log->printf("Static IP not used, retrying to set static IP");
-                ETH.config(_ipConfiguration->ipAddress(), _ipConfiguration->defaultGateway(), _ipConfiguration->subnet(), _ipConfiguration->dnsServer());
-                ETH.begin(_type, _phy_addr, _cs, _irq, _rst, SPI);
-            }
-
+    switch (event)
+    {
+    case ARDUINO_EVENT_ETH_START:
+        Log->println("ETH Started");
+        ETH.setHostname(_hostname.c_str());
+        break;
+    case ARDUINO_EVENT_ETH_CONNECTED:
+        Log->println("ETH Connected");
+        if(!localIP().equals("0.0.0.0"))
+        {
             _connected = true;
-            if(_preferences->getBool(preference_ntw_reconfigure, false))
-            {
-                _preferences->putBool(preference_ntw_reconfigure, false);
-            }
-            break;
-        case ARDUINO_EVENT_ETH_LOST_IP:
-            Log->println("ETH Lost IP");
-            _connected = false;
-            onDisconnected();
-            break;
-        case ARDUINO_EVENT_ETH_DISCONNECTED:
-            Log->println("ETH Disconnected");
-            _connected = false;
-            onDisconnected();
-            break;
-        case ARDUINO_EVENT_ETH_STOP:
-            Log->println("ETH Stopped");
-            _connected = false;
-            onDisconnected();
-            break;
-        default:
-            Log->print("ETH Event: ");
-            Log->println(event);
-            break;
+        }
+        break;
+    case ARDUINO_EVENT_ETH_GOT_IP:
+        Log->printf("ETH Got IP: '%s'\n", esp_netif_get_desc(info.got_ip.esp_netif));
+        Log->println(ETH);
+
+        // For RMII devices, this check is handled in the update() method.
+        if(_useSpi && !_ipConfiguration->dhcpEnabled() && _ipConfiguration->ipAddress() != ETH.localIP())
+        {
+            Log->printf("Static IP not used, retrying to set static IP");
+            ETH.config(_ipConfiguration->ipAddress(), _ipConfiguration->defaultGateway(), _ipConfiguration->subnet(), _ipConfiguration->dnsServer());
+            ETH.begin(_type, _phy_addr, _cs, _irq, _rst, SPI);
+        }
+
+        _connected = true;
+        if(_preferences->getBool(preference_ntw_reconfigure, false))
+        {
+            _preferences->putBool(preference_ntw_reconfigure, false);
+        }
+        break;
+    case ARDUINO_EVENT_ETH_LOST_IP:
+        Log->println("ETH Lost IP");
+        _connected = false;
+        onDisconnected();
+        break;
+    case ARDUINO_EVENT_ETH_DISCONNECTED:
+        Log->println("ETH Disconnected");
+        _connected = false;
+        onDisconnected();
+        break;
+    case ARDUINO_EVENT_ETH_STOP:
+        Log->println("ETH Stopped");
+        _connected = false;
+        onDisconnected();
+        break;
+    default:
+        Log->print("ETH Event: ");
+        Log->println(event);
+        break;
     }
 }
-
-
 
 void EthernetDevice::reconfigure()
 {
@@ -229,9 +248,8 @@ void EthernetDevice::reconfigure()
     restartEsp(RestartReason::ReconfigureETH);
 }
 
-bool EthernetDevice::supportsEncryption()
+void EthernetDevice::scan(bool passive, bool async)
 {
-    return true;
 }
 
 bool EthernetDevice::isConnected()
@@ -239,20 +257,17 @@ bool EthernetDevice::isConnected()
     return _connected;
 }
 
-ReconnectStatus EthernetDevice::reconnect(bool force)
+bool EthernetDevice::isApOpen()
 {
-    if(!_hardwareInitialized)
-    {
-        return ReconnectStatus::CriticalFailure;
-    }
-    delay(200);
-    return isConnected() ? ReconnectStatus::Success : ReconnectStatus::Failure;
+    return false;
 }
 
 void EthernetDevice::onDisconnected()
 {
-    if(_preferences->getBool(preference_restart_on_disconnect, false) && ((esp_timer_get_time() / 1000) > 60000)) restartEsp(RestartReason::RestartOnDisconnectWatchdog);
-    reconnect();
+    if(_preferences->getBool(preference_restart_on_disconnect, false) && (espMillis() > 60000))
+    {
+        restartEsp(RestartReason::RestartOnDisconnectWatchdog);
+    }
 }
 
 int8_t EthernetDevice::signalStrength()
