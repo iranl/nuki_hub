@@ -134,6 +134,7 @@ private:
     bool _pairedAsApp = false;
     bool _paired = false;
     bool _statusUpdated = false;
+    int _newSignal = 0;
     bool _hasKeypad = false;
     bool _keypadEnabled = false;
     uint _maxKeypadCodeCount = 0;
