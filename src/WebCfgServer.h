@@ -1,9 +1,10 @@
 #pragma once
 
 #include <Preferences.h>
-#include <AsyncTCP.h>
-#include <DNSServer.h>
-#include <ESPAsyncWebServer.h>
+#include <PsychicHttp.h>
+#ifdef CONFIG_ESP_HTTPS_SERVER_ENABLE
+#include <PsychicHttpsServer.h>
+#endif
 #include "esp_ota_ops.h"
 #include "Config.h"
 
@@ -37,9 +38,9 @@ class WebCfgServer
 {
 public:
     #ifndef NUKI_HUB_UPDATER
-    WebCfgServer(NukiWrapper* nuki, NukiOpenerWrapper* nukiOpener, NukiNetwork* network, Gpio* gpio, Preferences* preferences, bool allowRestartToPortal, uint8_t partitionType, AsyncWebServer* asyncServer);
+    WebCfgServer(NukiWrapper* nuki, NukiOpenerWrapper* nukiOpener, NukiNetwork* network, Gpio* gpio, Preferences* preferences, bool allowRestartToPortal, uint8_t partitionType, PsychicHttpServer* psychicServer);
     #else
-    WebCfgServer(NukiNetwork* network, Preferences* preferences, bool allowRestartToPortal, uint8_t partitionType, AsyncWebServer* asyncServer);    
+    WebCfgServer(NukiNetwork* network, Preferences* preferences, bool allowRestartToPortal, uint8_t partitionType, PsychicHttpServer* psychicServer);
     #endif
     ~WebCfgServer() = default;
 
@@ -47,36 +48,32 @@ public:
 
 private:
     #ifndef NUKI_HUB_UPDATER
-    void sendSettings(AsyncWebServerRequest *request);
-    bool processArgs(AsyncWebServerRequest *request, String& message);
-    bool processImport(AsyncWebServerRequest *request, String& message);
-    void processGpioArgs(AsyncWebServerRequest *request);
-    void buildHtml(AsyncWebServerRequest *request);
-    void buildAccLvlHtml(AsyncWebServerRequest *request, int aclPart = 0);
-    void buildCredHtml(AsyncWebServerRequest *request);
-    void buildImportExportHtml(AsyncWebServerRequest *request);
-    void buildMqttConfigHtml(AsyncWebServerRequest *request);
-    void buildStatusHtml(AsyncWebServerRequest *request);
-    void buildAdvancedConfigHtml(AsyncWebServerRequest *request);
-    void buildNukiConfigHtml(AsyncWebServerRequest *request);
-    void buildGpioConfigHtml(AsyncWebServerRequest *request);
+    esp_err_t sendSettings(PsychicRequest *request);
+    bool processArgs(PsychicRequest *request, String& message);
+    bool processImport(PsychicRequest *request, String& message);
+    void processGpioArgs(PsychicRequest *request);
+    esp_err_t buildHtml(PsychicRequest *request);
+    esp_err_t buildAccLvlHtml(PsychicRequest *request);
+    esp_err_t buildCredHtml(PsychicRequest *request);
+    esp_err_t buildImportExportHtml(PsychicRequest *request);
+    esp_err_t buildNetworkConfigHtml(PsychicRequest *request);
+    esp_err_t buildMqttConfigHtml(PsychicRequest *request);
+    esp_err_t buildStatusHtml(PsychicRequest *request);    
+    esp_err_t buildAdvancedConfigHtml(PsychicRequest *request);
+    esp_err_t buildNukiConfigHtml(PsychicRequest *request);
+    esp_err_t buildGpioConfigHtml(PsychicRequest *request);
     #ifndef CONFIG_IDF_TARGET_ESP32H2
-    void buildConfigureWifiHtml(AsyncWebServerRequest *request);
+    esp_err_t buildConfigureWifiHtml(PsychicRequest *request);
     #endif
-    void buildInfoHtml(AsyncWebServerRequest *request);
-    void buildCustomNetworkConfigHtml(AsyncWebServerRequest *request);
-    void processUnpair(AsyncWebServerRequest *request, bool opener);
-    void processUpdate(AsyncWebServerRequest *request);
-    void processFactoryReset(AsyncWebServerRequest *request);
-    void printInputField(AsyncResponseStream *response, const char* token, const char* description, const char* value, const size_t& maxLength, const char* id, const bool& isPassword = false, const bool& showLengthRestriction = false);
-    void printInputField(AsyncResponseStream *response, const char* token, const char* description, const int value, size_t maxLength, const char* id);
-    void printCheckBox(AsyncResponseStream *response, const char* token, const char* description, const bool value, const char* htmlClass);
-    void printCheckBox(String &partString, const char* token, const char* description, const bool value, const char* htmlClass);
-    void printTextarea(AsyncResponseStream *response, const char *token, const char *description, const char *value, const size_t& maxLength, const bool& enabled = true, const bool& showLengthRestriction = false);
-    void printDropDown(AsyncResponseStream *response, const char *token, const char *description, const String preselectedValue, std::vector<std::pair<String, String>> options, const String className);
-    void buildNavigationButton(AsyncResponseStream *response, const char* caption, const char* targetPath, const char* labelText = "");
-    void buildNavigationMenuEntry(AsyncResponseStream *response, const char *title, const char *targetPath, const char* warningMessage = "");
-    void partAccLvlHtml(String &partString, int aclPart);
+    esp_err_t buildInfoHtml(PsychicRequest *request);
+    esp_err_t buildCustomNetworkConfigHtml(PsychicRequest *request);
+    esp_err_t processUnpair(PsychicRequest *request, bool opener);
+    esp_err_t processUpdate(PsychicRequest *request);
+    esp_err_t processFactoryReset(PsychicRequest *request);
+    void printTextarea(PsychicStreamResponse *response, const char *token, const char *description, const char *value, const size_t& maxLength, const bool& enabled = true, const bool& showLengthRestriction = false);
+    void printDropDown(PsychicStreamResponse *response, const char *token, const char *description, const String preselectedValue, std::vector<std::pair<String, String>> options, const String className);
+    void buildNavigationButton(PsychicStreamResponse *response, const char* caption, const char* targetPath, const char* labelText = "");
+    void buildNavigationMenuEntry(PsychicStreamResponse *response, const char *title, const char *targetPath, const char* warningMessage = "");
 
     const std::vector<std::pair<String, String>> getNetworkDetectionOptions() const;
     const std::vector<std::pair<String, String>> getGpioOptions() const;
@@ -88,8 +85,8 @@ private:
     String getPreselectionForGpio(const uint8_t& pin);
     String pinStateToString(uint8_t value);
 
-    void printParameter(AsyncResponseStream *response, const char* description, const char* value, const char *link = "", const char *id = "");
-    
+    void printParameter(PsychicStreamResponse *response, const char* description, const char* value, const char *link = "", const char *id = "");
+
     NukiWrapper* _nuki = nullptr;
     NukiOpenerWrapper* _nukiOpener = nullptr;
     Gpio* _gpio = nullptr;
@@ -97,20 +94,32 @@ private:
     bool _brokerConfigured = false;
     bool _rebootRequired = false;
     #endif
-
+    
+    std::vector<String> _ssidList;
+    std::vector<int> _rssiList;
     String generateConfirmCode();
     String _confirmCode = "----";
-    void buildConfirmHtml(AsyncWebServerRequest *request, const String &message, uint32_t redirectDelay = 5, bool redirect = false);    
-    void buildOtaHtml(AsyncWebServerRequest *request, bool debug = false);
-    void buildOtaCompletedHtml(AsyncWebServerRequest *request);
-    void sendCss(AsyncWebServerRequest *request);
-    void sendFavicon(AsyncWebServerRequest *request);
-    void buildHtmlHeader(AsyncResponseStream *response, String additionalHeader = "");
+    esp_err_t buildSSIDListHtml(PsychicRequest *request);
+    esp_err_t buildConfirmHtml(PsychicRequest *request, const String &message, uint32_t redirectDelay = 5, bool redirect = false);
+    esp_err_t buildOtaHtml(PsychicRequest *request, bool debug = false);
+    esp_err_t buildOtaCompletedHtml(PsychicRequest *request);
+    esp_err_t sendCss(PsychicRequest *request);
+    esp_err_t sendFavicon(PsychicRequest *request);
+    void createSsidList();
+    void buildHtmlHeader(PsychicStreamResponse *response, String additionalHeader = "");
     void waitAndProcess(const bool blocking, const uint32_t duration);
-    void handleOtaUpload(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final);
+    esp_err_t handleOtaUpload(PsychicRequest *request, const String& filename, uint64_t index, uint8_t *data, size_t len, bool final);
+    void printCheckBox(PsychicStreamResponse *response, const char* token, const char* description, const bool value, const char* htmlClass);
     void printProgress(size_t prg, size_t sz);
+    #ifndef CONFIG_IDF_TARGET_ESP32H2
+    esp_err_t buildWifiConnectHtml(PsychicRequest *request);
+    bool processWiFi(PsychicRequest *request, String& message);
     
-    AsyncWebServer* _asyncServer = nullptr;
+    #endif
+    void printInputField(PsychicStreamResponse *response, const char* token, const char* description, const char* value, const size_t& maxLength, const char* args, const bool& isPassword = false, const bool& showLengthRestriction = false);
+    void printInputField(PsychicStreamResponse *response, const char* token, const char* description, const int value, size_t maxLength, const char* args);
+    
+    PsychicHttpServer* _psychicServer = nullptr;
     NukiNetwork* _network = nullptr;
     Preferences* _preferences = nullptr;
 

@@ -6,6 +6,7 @@
 #include "NukiConstants.h"
 #include "NukiOpenerConstants.h"
 #include "NukiNetworkLock.h"
+#include "EspMillis.h"
 
 class NukiNetworkOpener : public MqttReceiver
 {
@@ -29,24 +30,27 @@ public:
     void publishRssi(const int& rssi);
     void publishRetry(const std::string& message);
     void publishBleAddress(const std::string& address);
-    void publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, const char *softwareVersion, const char *hardwareVersion, const bool& publishAuthData, const bool& hasKeypad, char* lockAction, char* unlockAction, char* openAction);
-    void removeHASSConfig(char* uidString);
     void publishKeypad(const std::list<NukiLock::KeypadEntry>& entries, uint maxKeypadCodeCount);
     void publishTimeControl(const std::list<NukiOpener::TimeControlEntry>& timeControlEntries, uint maxTimeControlEntryCount);
+    void publishAuth(const std::list<NukiLock::AuthorizationEntry>& authEntries, uint maxAuthEntryCount);
     void publishStatusUpdated(const bool statusUpdated);
     void publishConfigCommandResult(const char* result);
     void publishKeypadCommandResult(const char* result);
     void publishKeypadJsonCommandResult(const char* result);
     void publishTimeControlCommandResult(const char* result);
+    void publishAuthCommandResult(const char* result);
 
     void setLockActionReceivedCallback(LockActionResult (*lockActionReceivedCallback)(const char* value));
     void setConfigUpdateReceivedCallback(void (*configUpdateReceivedCallback)(const char* value));
     void setKeypadCommandReceivedCallback(void (*keypadCommandReceivedReceivedCallback)(const char* command, const uint& id, const String& name, const String& code, const int& enabled));
     void setKeypadJsonCommandReceivedCallback(void (*keypadJsonCommandReceivedReceivedCallback)(const char* value));
     void setTimeControlCommandReceivedCallback(void (*timeControlCommandReceivedReceivedCallback)(const char* value));
+    void setAuthCommandReceivedCallback(void (*authCommandReceivedReceivedCallback)(const char* value));
     void onMqttDataReceived(const char* topic, byte* payload, const unsigned int length) override;
+    void setupHASS(int type, uint32_t nukiId, char* nukiName, const char* firmwareVersion, const char* hardwareVersion, bool hasDoorSensor, bool hasKeypad);
 
-    bool reconnected();
+    int mqttConnectionState();
+    bool reconnected(); //SETBACK
     uint8_t queryCommands();
     char _nukiName[33];
 
@@ -73,15 +77,17 @@ private:
 
     String concat(String a, String b);
 
-    Preferences* _preferences;
+    Preferences* _preferences = nullptr;
 
     NukiNetwork* _network = nullptr;
+    NukiPublisher* _nukiPublisher = nullptr;
 
+    std::map<uint32_t, String> _authEntries;
     char _mqttPath[181] = {0};
     bool _isConnected = false;
     bool _firstTunerStatePublish = true;
     bool _haEnabled = false;
-    bool _reconnected = false;
+    bool _reconnected = false; //SETBACK
     bool _disableNonJSON = false;
 
     String _keypadCommandName = "";
@@ -105,4 +111,5 @@ private:
     void (*_keypadCommandReceivedReceivedCallback)(const char* command, const uint& id, const String& name, const String& code, const int& enabled) = nullptr;
     void (*_keypadJsonCommandReceivedReceivedCallback)(const char* value) = nullptr;
     void (*_timeControlCommandReceivedReceivedCallback)(const char* value) = nullptr;
+    void (*_authCommandReceivedReceivedCallback)(const char* value) = nullptr;
 };

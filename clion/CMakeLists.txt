@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 3.16.0)
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+# include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(nukihub)
 
 add_compile_definitions(CONFIG_IDF_TARGET_ESP32)
+add_compile_definitions(NUKI_64BIT_TIME)
 
 set(SRCFILES
         ../src/Config.h
@@ -27,15 +28,10 @@ set(SRCFILES
         ../src/MqttTopics.h
         ../src/WebCfgServerConstants.h
         ../src/WebCfgServer.cpp
-        ../src/PresenceDetection.cpp
         ../src/PreferencesKeys.h
         ../src/Gpio.cpp
         ../src/Logger.cpp
         ../src/RestartReason.h
-        #        include/RTOS.h
-        ../lib/WiFiManager/WiFiManager.cpp
-        ../lib/WiFiManager/wm_consts_en.h
-        ../lib/WiFiManager/wm_strings_en.h
         ../lib/nuki_ble/src/NukiBle.cpp
         ../lib/nuki_ble/src/NukiBle.hpp
         ../lib/nuki_ble/src/NukiLock.cpp
@@ -47,29 +43,32 @@ set(SRCFILES
         ../lib/nuki_ble/src/NukiUtils.cpp
         ../lib/nuki_ble/src/NukiLockUtils.cpp
         ../lib/nuki_ble/src/NukiOpenerUtils.cpp
-        ../lib/gpio2go/src/Gpio2Go.cpp
-        ../lib/gpio2go/src/InterruptMode.h
-        ../lib/gpio2go/src/PinMode.h
         ../lib/BleScanner/src/BleInterfaces.h
         ../lib/BleScanner/src/BleScanner.cpp
         ../lib/MqttLogger/src/MqttLogger.cpp
-        ../lib/AsyncTCP/src/AsyncTCP.cpp
+        ../src/util/NetworkUtil.cpp
+        ../src/enums/NetworkDeviceType.h
+        ../src/util/NetworkDeviceInstantiator.cpp
+        ../src/HomeAssistantDiscovery.cpp
+        ../src/NukiOfficial.cpp
+        ../src/NukiPublisher.cpp
+        ../src/EspMillis.h
 )
 
 file(GLOB_RECURSE SRCFILESREC
         lib/NimBLE-Arduino/src/*.c
         lib/NimBLE-Arduino/src/*.cpp
         lib/NimBLE-Arduino/src/*.h
-        lib/ESP Async WebServer/src/*.cpp
-        lib/ESP Async WebServer/src/*.h
+        lib/ArduinoJson/src/*.h
+        lib/ArduinoJson/src/*.hpp
+        lib/PsychicHttp/src/*.cpp
+        lib/PsychicHttp/src/*.h
         lib/espMqttClient/src/*.cpp
         lib/espMqttClient/src/*.h
         lib/espMqttClient/src/Packets/*.cpp
         lib/espMqttClient/src/Packets/*.h
         lib/espMqttClient/src/Transport/*.cpp
-        lib/espMqttClient/src/Transport/*.h
-        lib/ArduinoJson/src/*.h
-        lib/ArduinoJson/src/*.hpp
+        lib/espMqttClient/src/Transport/*.h        
 )
 
 add_executable(dummy

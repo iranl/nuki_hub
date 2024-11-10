@@ -11,9 +11,6 @@
 #include <NetworkClientSecure.h>
 #include <Preferences.h>
 #include "NetworkDevice.h"
-#ifndef NUKI_HUB_UPDATER
-#include "espMqttClient.h"
-#endif
 
 class EthernetDevice : public NetworkDevice
 {
@@ -28,8 +25,7 @@ public:
                      int mdc = ETH_PHY_MDC_LAN8720,
                      int mdio = ETH_PHY_MDIO_LAN8720,
                      eth_phy_type_t ethtype = ETH_PHY_TYPE_LAN8720,
-                     eth_clock_mode_t clock_mode = ETH_CLK_MODE_LAN8720,
-                     bool use_mac_from_efuse = false);
+                     eth_clock_mode_t clock_mode = ETH_CLK_MODE_LAN8720);
 
     EthernetDevice(const String& hostname,
                      Preferences* preferences,
@@ -42,43 +38,44 @@ public:
                      int spi_sck,
                      int spi_miso,
                      int spi_mosi,
-                     uint8_t spi_freq_mhz,
                      eth_phy_type_t ethtype);
 
     const String deviceName() const override;
 
     virtual void initialize();
     virtual void reconfigure();
-    virtual ReconnectStatus reconnect(bool force = false);
-    bool supportsEncryption() override;
+    virtual void update();
 
+    virtual void scan(bool passive = false, bool async = true);
     virtual bool isConnected();
+    virtual bool isApOpen();
 
     int8_t signalStrength() override;
-    
+
     String localIP() override;
     String BSSIDstr() override;
 
 private:
     Preferences* _preferences;
-    
-    void init();
+
     void onDisconnected();
-    void waitForIpAddressWithTimeout();
+    void onNetworkEvent(arduino_event_id_t event, arduino_event_info_t info);
 
     bool _connected = false;
-    bool _restartOnDisconnect = false;
-    bool _startAp = false;
-    char* _path;
     bool _hardwareInitialized = false;
+    bool _useSpi = false;
+
+    int64_t _checkIpTs = -1;
 
     const std::string _deviceName;
     uint8_t _phy_addr;
+    eth_phy_type_t _type;
 
     // LAN8720
     int _power;
     int _mdc;
     int _mdio;
+    eth_clock_mode_t _clock_mode;
 
     // W55000 and DM9051
     int _cs;
@@ -87,16 +84,4 @@ private:
     int _spi_sck;
     int _spi_miso;
     int _spi_mosi;
-    uint8_t _spi_freq_mhz;
-
-    eth_phy_type_t _type;
-    eth_clock_mode_t _clock_mode;
-    bool _use_mac_from_efuse;
-    bool _useSpi = false;
-
-    #ifndef NUKI_HUB_UPDATER
-    char _ca[TLS_CA_MAX_SIZE] = {0};
-    char _cert[TLS_CERT_MAX_SIZE] = {0};
-    char _key[TLS_KEY_MAX_SIZE] = {0};
-    #endif
 };

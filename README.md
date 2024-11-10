@@ -15,7 +15,7 @@ Feel free to join us on Discord: https://discord.gg/9nPq85bP4p
 ## Supported devices
 
 <b>Supported ESP32 devices:</b>
-- Nuki Hub is compiled against all ESP32 models with Wi-Fi and Bluetooh Low Energy (BLE) which are supported by ESP-IDF 5.1.4 and Arduino Core 3.0.4.
+- Nuki Hub is compiled against all ESP32 models with Wi-Fi and Bluetooh Low Energy (BLE) which are supported by ESP-IDF 5.1.4 and Arduino Core 3.0.7.
 - Tested stable builds are provided for the ESP32, ESP32-S3 and ESP32-C3.
 - Untested builds are provided for the ESP32-Solo1.
 - Support for the ESP32-C6 and ESP32-H2 is experimental. There could be more frequent crashes than on other ESP32 devices and connections with the Nuki device could be slower than on other ESP32 devices.
@@ -47,10 +47,52 @@ As an alternative to Wi-Fi (which is available on any supported ESP32), the foll
 In principle all ESP32 (and variants) devices with built-in ethernet port are supported, but might require additional setup using the "Custom LAN setup" option.
 See the "[Connecting via Ethernet](#connecting-via-ethernet-optional)" section for more information.
 
+## Recommended ESP32 devices
+
+- If WIFI6 is absolutely required: ESP32-C6
+- If PoE is required: Any of the above mentioned devices with PoE or any other ESP device in combination with a SPI Ethernet module ([W5500](https://www.aliexpress.com/w/wholesale-w5500.html)) and [PoE to Ethernet and USB type B/C splitter](https://aliexpress.com/w/wholesale-poe-splitter-usb-c.html)
+- If you want maximum performance and intend to run any or multiple of the following:
+  - a Nuki Lock and Nuki Opener and/or 
+  - MQTT SSL and/or 
+  - HTTP SSL and/or 
+  - large amounts of keypad codes, timecontrol or authorization entries
+  - Developing/debugging Nuki devices and/or Nuki Hub
+
+  An ESP32-S3 with 2MB of PSRAM or more (look for an ESP32-S3 with the designation N>=4 and R>=2 such as an ESP32-S3 N16R8)
+  
+- In general when buying a new device when size and a couple of dollars more or less are not an issue: An ESP32-S3 with 2MB of PSRAM or more.<br>
+
+The ESP32-S3 is a dual-core CPU with many GPIO's, ability to enlarge RAM using PSRAM, ability to connect Ethernet modules over SPI and optionally power the device with a PoE splitter. The only functions missing from the ESP32-S3 as compared to other ESP devices is the ability to use some Ethernet modules only supported by the original ESP32 and the ability to connect over WIFI6 (C6)
+
+## Feature comparison Nuki Hub vs. Nuki Bridge
+
+| Feature | Nuki Hub | Nuki Bridge |
+|---|---|---|
+| Bridge API |  | x |
+| Smart Lock remote control | x | x |
+| Smart Home integration via Matter |  | x |
+| Apple HomeKit integration via Matter |  | x |
+| MQTT API | x | x (only for SL 3, 4 and 4 Pro models) |
+| Wired LAN support | x |  |
+| Power over Ethernet (PoE) | x (if supported by LAN/ESP module) |  |
+| WLAN support | x | x (only for SL 3 and 4 Pro Models) || Home Assistant integration | x (full integration of most Nuki features) | x |
+| Home Automation platform integration | x | x |
+| Cloud support | x (optional via smarthome solution) | x |
+| Cloud-less operation | x | x (since fw 3.8.2) |
+| Official Nuki app integration |  | x |
+| Nuki Smartlocks all models | x | x |
+| Nuki opener | x | x |
+| Nuki Keypad (1.0 and 2.0) | x | x |
+| MQTT encryption | x |  |
+| Fine-grained access control of MQTT API | x |  |
+| Export of lock actions via MQTT API | x |  |
+| Control via GPIO | x |  |
+| Hybrid mode for WiFI and Thread connected locks | x |  |
+
 ## Support Nuki Hub development
 
 If you haven't ordered your Nuki product yet, you can support me by using my referrer code when placing your order:<br>
-REFZDJ2QKXTG2<br>
+REF2BJHFVHZKK<br>
 This will also give you a 10% discount on your order.<br>
 <br>
 This project is free to use for everyone. However if you feel like donating, you can buy me a coffee at ko-fi.com:<br>
@@ -67,7 +109,8 @@ Unpack the zip archive and read the included how-to-flash.txt for installation i
 
 ## Initial setup (Network and MQTT)
 
-Power up the ESP32 and a new Wi-Fi access point named "ESP32_(8 CHARACTER ALPHANUMERIC)" should appear.<br>
+Power up the ESP32 and a new Wi-Fi access point named "NukiHub" should appear.<br>
+The password of the access point is "NukiHubESP32".<br>
 Connect a client device to this access point and in a browser navigate to "http://192.168.4.1".<br>
 Use the web interface to connect the ESP to your preferred Wi-Fi network.<br>
 <br>
@@ -75,15 +118,16 @@ After configuring Wi-Fi, the ESP should automatically connect to your network.<b
 <br>
 To configure the connection to the MQTT broker, first connect your client device to the same Wi-Fi network the ESP32 is connected to.<br>
 In a browser navigate to the IP address assigned to the ESP32 via DHCP (often found in the web interface of your internet router).<br><br>
-Next click on "Edit" below "MQTT and Network Configuration" and enter the address and port (usually 1883) of your MQTT broker and a username and a password if required by your MQTT broker.<br>
+Next click on "Edit" below "MQTT Configuration" and enter the address and port (usually 1883) of your MQTT broker and a username and a password if required by your MQTT broker.<br>
 <br>
 The firmware supports SSL encryption for MQTT, however most people and especially home users don't use this.<br>
 In that case leave all fields starting with "MQTT SSL" blank. Otherwise see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
 
 ## Pairing with a Nuki Lock or Opener
 
-Enable pairing mode on the Nuki Lock or Opener (press the button on the Nuki device for a few seconds) and power on the ESP32.<br>
-Pairing should be automatic.<br>
+Make sure "Bluetooth pairing" is enabled for the Nuki device by enabling this setting in the official Nuki App in "Settings" > "Features & Configuration" > "Button and LED".
+After enabling the setting press the button on the Nuki device for a few seconds.<br>
+Pairing should be automatic when the ESP32 is powered on.<br>
 <br>
 When pairing is successful, the web interface should show "Paired: Yes".<br>
 MQTT nodes like lock state and battery level should now reflect the reported values from the lock.<br>
@@ -97,43 +141,48 @@ Enable "Register as app" before pairing to allow this. Otherwise the Bridge will
 Hybrid mode allows you to use the official Nuki MQTT implemenation on a Nuki Lock 3.0 Pro, Nuki Lock 4.0 or Nuki Lock 4.0 Pro in conjunction with Nuki Hub.<br>
 See [hybrid mode](/HYBRID.md) for more information.
 
+## Memory constraints
+
+ESP32 devices have a limited amount of free RAM available.<br>
+<br>
+On version 9.01 of Nuki Hub with only a Nuki Lock connected the expected free amount of RAM/Heap available is around:
+- ESP32: 60 kilobytes / 60.000 bytes
+- Other variants (C3/S3/C6/H2): 90-120 kilobytes / 90.000-120.000 bytes
+
+This free amount of RAM can be reduced (temporarily) by certain actions (such as changing Nuki device config) or continuously when enabling the following:
+- Connecting both a Nuki opener and a Nuki lock to Nuki Hub
+- Enlarging stack sizes of the Nuki and Network task to accommodate large amounts of keypad codes, authorization entries or timecontrol entries
+- MQTT SSL (Costs about 30k RAM)
+- HTTP SSL (Costs about 30k RAM)
+- Developing/debugging Nuki devices and/or Nuki Hub, using WebSerial (Costs about 30k RAM)
+
+The currently available RAM/Heap can be found on the info page of the Web configurator of Nuki Hub.<br>
+<br>
+When the ESP32 runs out of available RAM this device can crash or otherwise unexpected behaviour can occur.<br>
+<br>
+Nuki Hub does allow for the use of embedded PSRAM on the regular binaries whenever it is available.<br>
+PSRAM is usually 2, 4 or 8MB in size and thus greatly enlarges the 320kb of internal RAM that is available.<br>
+It is basically impossible to run out of RAM when PSRAM is available.
+You can check on the info page of the Web configurator if PSRAM is available.
+
+Note that there are two builds of Nuki Hub for the ESP32-S3 available.<br>
+One for devices with no or Quad SPI PSRAM and one for devices with Octal SPI PSRAM.<br>
+If your ESP32-S3 device has PSRAM but it is not detected please flash the other S3 binary.
+
 ## Configuration
 
 In a browser navigate to the IP address assigned to the ESP32.
 
-### MQTT and Network Configuration
+### Network Configuration
 
-#### Basic MQTT and Network Configuration
+#### Network Configuration
 
 - Host name: Set the hostname for the Nuki Hub ESP
-- MQTT Broker: Set to the IP address of the MQTT broker
-- MQTT Broker port: Set to the Port of the MQTT broker (usually 1883)
-- MQTT User: If using authentication on the MQTT broker set to a username with read/write rights on the MQTT broker, set to # to clear
-- MQTT Password : If using authentication on the MQTT broker set to the password belonging to a username with read/write rights on the MQTT broker, set to # to clear
-
-#### Advanced MQTT and Network Configuration
-
-- Home Assistant discovery topic: Set to the Home Assistant auto discovery topic, leave empty to disable auto discovery. Usually "homeassistant" unless you manually changed this setting on the Home Assistant side.
-- Home Assistant device configuration URL: When using Home Assistant discovery the link to the Nuki Hub Web Configuration will be published to Home Assistant. By default when this setting is left empty this will link to the current IP of the Nuki Hub. When using a reverse proxy to access the Web Configuration you can set a custom URL here.
-- Set Nuki Opener Lock/Unlock action in Home Assistant to Continuous mode (Opener only): By default the lock entity in Home Assistant will enable Ring-to-Open (RTO) when unlocking and disable RTO when locking. By enabling this setting this behaviour will change and now unlocking will enable Continuous Mode and locking will disable Continuous Mode, for more information see the "[Home Assistant Discovery](#home-assistant-discovery-optional)" section of this README.
-- MQTT SSL CA Certificate: Optionally set to the CA SSL certificate of the MQTT broker, see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
-- MQTT SSL Client Certificate: Optionally set to the Client SSL certificate of the MQTT broker, see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
-- MQTT SSL Client Key: Optionally set to the Client SSL key of the MQTT broker, see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
 - Network hardware: "Wi-Fi only" by default, set to one of the specified ethernet modules if available, see the "Supported Ethernet devices" and "[Connecting via Ethernet](#connecting-via-ethernet-optional)" section of this README.
-- Disable fallback to Wi-Fi / Wi-Fi config portal: By default the Nuki Hub will fallback to Wi-Fi and open the Wi-Fi configuration portal when the network connection fails. Enable this setting to disable this fallback.
-- Connect to AP with the best signal in an environment with multiple APs with the same SSID: Enable to perform a scan for the Access Point with the best signal strenght for the specified SSID in a multi AP/Mesh environment.
+- Home Assistant device configuration URL: When using Home Assistant discovery the link to the Nuki Hub Web Configuration will be published to Home Assistant. By default when this setting is left empty this will link to the current IP of the Nuki Hub. When using a reverse proxy to access the Web Configuration you can set a custom URL here.
 - RSSI Publish interval: Set to a positive integer to set the amount of seconds between updates to the maintenance/wifiRssi MQTT topic with the current Wi-Fi RSSI, set to -1 to disable, default 60.
-- MQTT Timeout until restart: Set to a positive integer to restart the Nuki Hub after the set amount of seconds has passed without an active connection to the MQTT broker, set to -1 to disable, default 60.
 - Restart on disconnect: Enable to restart the Nuki Hub when disconnected from the network.
-- Reconnect network on MQTT connection failure: Enable to force reconnection to the network when connection to the MQTT broker fails (after 15 tries).
-- Enable MQTT logging: Enable to fill the maintenance/log MQTT topic with debug log information.
-- Enable WebSerial logging : Enable to publish debug log information to `http://NUKIHUBIP:81/webserial`.
 - Check for Firmware Updates every 24h: Enable to allow the Nuki Hub to check the latest release of the Nuki Hub firmware on boot and every 24 hours. Requires the Nuki Hub to be able to connect to github.com. The latest version will be published to MQTT and will be visible on the main page of the Web Configurator.
-- Allow updating using MQTT: Enable to allow starting the Nuki Hub update process using MQTT. Will also enable the Home Assistant update functionality if auto discovery is enabled.
-- Disable some extraneous non-JSON topics: Enable to not publish non-JSON keypad and config MQTT topics.
-- Enable hybrid official MQTT and Nuki Hub setup: Enable to combine the official MQTT over Thread/Wi-Fi with BLE. Improves speed of state changes. Needs the official MQTT to be setup first. Also requires Nuki Hub to be paired as app and unregistered as a bridge using the Nuki app. See [hybrid mode](/HYBRID.md)
-- Enable sending actions through official MQTT: Enable to sent lock actions through the official MQTT topics (e.g. over Thread/Wi-Fi) instead of using BLE. Needs "Enable hybrid official MQTT and Nuki Hub setup" to be enabled. See [hybrid mode](/HYBRID.md)
-- Time between status updates when official MQTT is offline (seconds): Set to a positive integer to set the maximum amount of seconds between actively querying the Nuki lock for the current lock state when the official MQTT is offline, default 600.
 
 #### IP Address assignment
 
@@ -143,14 +192,38 @@ In a browser navigate to the IP address assigned to the ESP32.
 - Default gateway: When DHCP is disabled set to the preferred gateway IP address for the Nuki Hub to use
 - DNS Server: When DHCP is disabled set to the preferred DNS server IP address for the Nuki Hub to use
 
+### MQTT Configuration
+
+#### Basic MQTT Configuration
+
+- MQTT Broker: Set to the IP address of the MQTT broker
+- MQTT Broker port: Set to the Port of the MQTT broker (usually 1883)
+- MQTT User: If using authentication on the MQTT broker set to a username with read/write rights on the MQTT broker, set to # to clear
+- MQTT Password : If using authentication on the MQTT broker set to the password belonging to a username with read/write rights on the MQTT broker, set to # to clear
+- MQTT NukiHub Path: Set to the preferred MQTT root topic for NukiHub, defaults to "nukihub". Make sure this topic is unique when using multiple ESP32 NukiHub devices
+- Enable Home Assistant auto discovery: Enable Home Assistant MQTT auto discovery. Will automatically create entities in Home Assistant for NukiHub and connected Nuki Lock and/or Opener when enabled.
+
+#### Advanced MQTT Configuration
+
+- Home Assistant discovery topic: Set to the Home Assistant auto discovery topic. Usually "homeassistant" unless you manually changed this setting on the Home Assistant side.
+- Set Nuki Opener Lock/Unlock action in Home Assistant to Continuous mode (Opener only): By default the lock entity in Home Assistant will enable Ring-to-Open (RTO) when unlocking and disable RTO when locking. By enabling this setting this behaviour will change and now unlocking will enable Continuous Mode and locking will disable Continuous Mode, for more information see the "[Home Assistant Discovery](#home-assistant-discovery-optional)" section of this README.
+- MQTT SSL CA Certificate: Optionally set to the CA SSL certificate of the MQTT broker, see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
+- MQTT SSL Client Certificate: Optionally set to the Client SSL certificate of the MQTT broker, see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
+- MQTT SSL Client Key: Optionally set to the Client SSL key of the MQTT broker, see the "[MQTT Encryption](#mqtt-encryption-optional)" section of this README.
+- MQTT Timeout until restart: Set to a positive integer to restart the Nuki Hub after the set amount of seconds has passed without an active connection to the MQTT broker, set to -1 to disable, default 60.
+- Enable MQTT logging: Enable to fill the maintenance/log MQTT topic with debug log information.
+- Allow updating using MQTT: Enable to allow starting the Nuki Hub update process using MQTT. Will also enable the Home Assistant update functionality if auto discovery is enabled.
+- Disable some extraneous non-JSON topics: Enable to not publish non-JSON keypad and config MQTT topics.
+- Enable hybrid official MQTT and Nuki Hub setup: Enable to combine the official MQTT over Thread/Wi-Fi with BLE. Improves speed of state changes. Needs the official MQTT to be setup first. Also requires Nuki Hub to be paired as app and unregistered as a bridge using the Nuki app. See [hybrid mode](/HYBRID.md)
+- Enable sending actions through official MQTT: Enable to sent lock actions through the official MQTT topics (e.g. over Thread/Wi-Fi) instead of using BLE. Needs "Enable hybrid official MQTT and Nuki Hub setup" to be enabled. See [hybrid mode](/HYBRID.md)
+- Time between status updates when official MQTT is offline (seconds): Set to a positive integer to set the maximum amount of seconds between actively querying the Nuki lock for the current lock state when the official MQTT is offline, default 600.
+
 ### Nuki Configuration
 
 #### Basic Nuki Configuration
 
 - Nuki Smartlock enabled: Enable if you want Nuki Hub to connect to a Nuki Lock (1.0-4.0)
-- MQTT Nuki Smartlock Path (Lock only): Set to the preferred MQTT root topic for the Nuki Lock, defaults to "nuki". Make sure this topic is not the same as the setting for the opener and is unique when using multiple Nuki Hub devices (when using multiple Nuki Locks)
 - Nuki Opener enabled: Enable if you want Nuki Hub to connect to a Nuki Opener
-- MQTT Nuki Opener Path (Opener only): Set to the preferred MQTT root topic for the Nuki Opener, defaults to "nukiopener". Make sure this topic is not the same as the setting for the lock and is unique when using multiple Nuki Hub devices (when using multiple Nuki Openers)
 
 #### Advanced Nuki Configuration
 
@@ -171,8 +244,11 @@ In a browser navigate to the IP address assigned to the ESP32.
 - Publish keypad entries information (Only available when a Keypad is detected): Enable to publish information about keypad codes through MQTT, see the "[Keypad control](#keypad-control-optional)" section of this README
 - Also publish keypad codes (Only available when a Keypad is detected): Enable to publish the actual keypad codes through MQTT, note that is could be considered a security risk
 - Add, modify and delete keypad codes (Only available when a Keypad is detected): Enable to allow configuration of keypad codes through MQTT, see the "[Keypad control](#keypad-control-optional)" section of this README
-- Publish time control information: Enable to publish information about time control entries through MQTT, see the "[Time Control](#time-control)" section of this README
-- Add, modify and delete time control entries: Enable to allow configuration of time control entries through MQTT, see the "[Time Control](#time-control)" section of this README
+- Allow checking if keypad codes are valid (Only available when a Keypad is detected): Enable to allow checking if a given codeId and code combination is valid through MQTT, note that is could be considered a security risk
+- Publish timecontrol information: Enable to publish information about timecontrol entries through MQTT, see the "[Timecontrol](#timecontrol)" section of this README
+- Add, modify and delete timecontrol entries: Enable to allow configuration of timecontrol entries through MQTT, see the "[Timecontrol](#timecontrol)" section of this README
+- Publish authorization information: Enable to publish information about authorization entries through MQTT, see the "[Authorization](#authorization)" section of this README
+- Modify and delete authorization entries: Enable to allow configuration of authorization entries through MQTT, see the "[Authorization](#authorization)" section of this README
 - Publish auth data: Enable to publish authorization data to the MQTT topic lock/log. Requires the Nuki security code / PIN to be set, see "[Nuki Lock PIN / Nuki Opener PIN](#nuki-lock-pin--nuki-opener-pin)" below.
 
 #### Nuki Lock/Opener Access Control
@@ -205,6 +281,21 @@ In a browser navigate to the IP address assigned to the ESP32.
 
 - Gpio [2-33]: See the "[GPIO lock control](#gpio-lock-control-optional)" section of this README.
 
+### Import/Export Configuration
+
+The "Import/Export Configuration" menu option allows the importing and exporting of the NukiHub settings in JSON format.<br>
+<br>
+Create a (partial) backup of the current NukiHub settings by selecting any of the following:<br>
+- Basic export: Will backup all settings that are not considered confidential (as such passwords and pincodes are not included in this export).
+- Export with redacted settings: Will backup basic settings and redacted settings such as passwords and pincodes.
+
+Both of the above options will not backup pairing data, so you will have to manually pair Nuki devices when importing this export on a factory reset or new device.
+
+- Export with redacted settings and pairing data: Will backup all settings and pairing data. Can be used to completely restore a factory reset or new device based on the settings of this device. (Re)pairing Nuki devices will not be needed when importing this export.
+<br>
+To import settings copy and paste the contents of the JSON file that is created by any of the above export options and select "Import".
+After importing the device will reboot.
+
 ## Exposed MQTT Topics
 
 ### Lock
@@ -231,60 +322,60 @@ In a browser navigate to the IP address assigned to the ESP32.
 
 ### Opener
 
-- lock/action: Allows to execute lock actions. After receiving the action, the value is set to "ack". Possible actions: activateRTO, deactivateRTO, electricStrikeActuation, activateCM, deactivateCM, fobAction1, fobAction2, fobAction3.
-- lock/state: Reports the current lock state as a string. Possible values are: locked, RTOactive, open, opening, uncalibrated.
-- lock/hastate: Reports the current lock state as a string, specifically for use by Home Assistant. Possible values are: locking, locked, unlocking, unlocked, jammed.
-- lock/json: Reports the lock state, trigger, ring to open timer, current time, time zone offset, last action trigger, last lock action, lock completion status, door sensor state, auth ID and auth name as JSON data.
-- lock/binaryState: Reports the current lock state as a string, mostly for use by Home Assistant. Possible values are: locked, unlocked.
-- lock/continuousMode: Enable or disable continuous mode on the opener (0 = disabled; 1 = enabled).
-- lock/ring: The string "ring" is published to this topic when a doorbell ring is detected while RTO or continuous mode is active or "ringlocked" when both are inactive.
-- lock/binaryRing: The string "ring" is published to this topic when a doorbell ring is detected, the state will revert to "standby" after 2 seconds.
-- lock/trigger: The trigger of the last action: autoLock, automatic, button, manual, system.
-- lock/lastLockAction: Reports the last lock action as a string. Possible values are: ActivateRTO, DeactivateRTO, ElectricStrikeActuation, ActivateCM, DeactivateCM, FobAction1, FobAction2, FobAction3, Unknown.
-- lock/log: If "Publish auth data" is enabled in the web interface, this topic will be filled with the log of authorization data.
-- lock/completionStatus: Status of the last action as reported by Nuki Opener: success, motorBlocked, canceled, tooRecent, busy, lowMotorVoltage, clutchFailure, motorPowerFailure, incompleteFailure, invalidCode, otherError, unknown.
-- lock/authorizationId: If enabled in the web interface, this topic is set to the authorization id of the last lock action.
-- lock/authorizationName: If enabled in the web interface, this topic is set to the authorization name of the last lock action.
-- lock/commandResult: Result of the last action as reported by Nuki library: success, failed, timeOut, working, notPaired, error, undefined.
-- lock/doorSensorState: State of the door sensor: unavailable, deactivated, doorClosed, doorOpened, doorStateUnknown, calibrating.
-- lock/rssi: The bluetooth signal strength of the Nuki Lock as measured by the ESP32 and expressed by the RSSI Value in dBm.
-- lock/address: The BLE address of the Nuki Lock.
-- lock/retry: Reports the current number of retries for the current command. 0 when command is successful, "failed" if the number of retries is greater than the maximum configured number of retries.
+- opener/action: Allows to execute lock actions. After receiving the action, the value is set to "ack". Possible actions: activateRTO, deactivateRTO, electricStrikeActuation, activateCM, deactivateCM, fobAction1, fobAction2, fobAction3.
+- opener/state: Reports the current lock state as a string. Possible values are: locked, RTOactive, open, opening, uncalibrated.
+- opener/hastate: Reports the current lock state as a string, specifically for use by Home Assistant. Possible values are: locking, locked, unlocking, unlocked, jammed.
+- opener/json: Reports the lock state, trigger, ring to open timer, current time, time zone offset, last action trigger, last lock action, lock completion status, door sensor state, auth ID and auth name as JSON data.
+- opener/binaryState: Reports the current lock state as a string, mostly for use by Home Assistant. Possible values are: locked, unlocked.
+- opener/continuousMode: Enable or disable continuous mode on the opener (0 = disabled; 1 = enabled).
+- opener/ring: The string "ring" is published to this topic when a doorbell ring is detected while RTO or continuous mode is active or "ringlocked" when both are inactive.
+- opener/binaryRing: The string "ring" is published to this topic when a doorbell ring is detected, the state will revert to "standby" after 2 seconds.
+- opener/trigger: The trigger of the last action: autoLock, automatic, button, manual, system.
+- opener/lastLockAction: Reports the last lock action as a string. Possible values are: ActivateRTO, DeactivateRTO, ElectricStrikeActuation, ActivateCM, DeactivateCM, FobAction1, FobAction2, FobAction3, Unknown.
+- opener/log: If "Publish auth data" is enabled in the web interface, this topic will be filled with the log of authorization data.
+- opener/completionStatus: Status of the last action as reported by Nuki Opener: success, motorBlocked, canceled, tooRecent, busy, lowMotorVoltage, clutchFailure, motorPowerFailure, incompleteFailure, invalidCode, otherError, unknown.
+- opener/authorizationId: If enabled in the web interface, this topic is set to the authorization id of the last lock action.
+- opener/authorizationName: If enabled in the web interface, this topic is set to the authorization name of the last lock action.
+- opener/commandResult: Result of the last action as reported by Nuki library: success, failed, timeOut, working, notPaired, error, undefined.
+- opener/doorSensorState: State of the door sensor: unavailable, deactivated, doorClosed, doorOpened, doorStateUnknown, calibrating.
+- opener/rssi: The bluetooth signal strength of the Nuki Lock as measured by the ESP32 and expressed by the RSSI Value in dBm.
+- opener/address: The BLE address of the Nuki Lock.
+- opener/retry: Reports the current number of retries for the current command. 0 when command is successful, "failed" if the number of retries is greater than the maximum configured number of retries.
 
 ### Configuration
-- configuration/buttonEnabled: 1 if the Nuki Lock/Opener button is enabled, otherwise 0.
-- configuration/ledEnabled: 1 if the Nuki Lock/Opener LED is enabled, otherwise 0.
-- configuration/ledBrightness: Set to the brightness of the LED on the Nuki Lock (0=min; 5=max) (Lock only).
-- configuration/singleLock: 0 if the Nuki Lock is set to double-lock the door, otherwise 1 (= single-lock) (Lock only).
-- configuration/autoLock:  1 if the Nuki Lock is set to Auto Lock, otherwise 0 (Lock only).
-- configuration/autoUnlock: 1 if the Nuki Lock is set to Auto Unlock, otherwise 0 (Lock only).
-- configuration/soundLevel: Set to the volume for sounds the Nuki Opener plays (0 = min; 255 = max) (Opener only).
-- configuration/action: Allows changing configuration settings of the Nuki Lock/Opener using a JSON formatted value. After receiving the action, the value is set to "--". See the "[Changing Nuki Lock/Opener Configuration](#changing-nuki-lockopener-configuration)" section of this README for possible actions/values
-- configuration/commandResult: Result of the last configuration change action as JSON data. See the "[Changing Nuki Lock/Opener Configuration](#changing-nuki-lockopener-configuration)" section of this README for possible values
-- configuration/basicJson: The current basic configuration of the Nuki Lock/Opener as JSON data. See [Nuki Smart Lock API](https://developer.nuki.io/page/nuki-smart-lock-api-2/2/#heading--set-config) and [Nuki Opener API](https://developer.nuki.io/page/nuki-opener-api-1/7/#heading--set-config) for available settings. Please note: Longitude and Latitude of the Lock/Opener are not published to MQTT by design. These values can still be changed though.
-- configuration/advancedJson: The current advanced configuration of the Nuki Lock/Opener as JSON data. See [Nuki Smart Lock API](https://developer.nuki.io/page/nuki-smart-lock-api-2/2/#heading--advanced-config) and [Nuki Opener API](https://developer.nuki.io/page/nuki-opener-api-1/7/#heading--advanced-config) for available settings.
+- [lock/opener/]configuration/buttonEnabled: 1 if the Nuki Lock/Opener button is enabled, otherwise 0.
+- [lock/opener/]configuration/ledEnabled: 1 if the Nuki Lock/Opener LED is enabled, otherwise 0.
+- [lock/opener/]configuration/ledBrightness: Set to the brightness of the LED on the Nuki Lock (0=min; 5=max) (Lock only).
+- [lock/opener/]configuration/singleLock: 0 if the Nuki Lock is set to double-lock the door, otherwise 1 (= single-lock) (Lock only).
+- [lock/opener/]configuration/autoLock:  1 if the Nuki Lock is set to Auto Lock, otherwise 0 (Lock only).
+- [lock/opener/]configuration/autoUnlock: 1 if the Nuki Lock is set to Auto Unlock, otherwise 0 (Lock only).
+- [lock/opener/]configuration/soundLevel: Set to the volume for sounds the Nuki Opener plays (0 = min; 255 = max) (Opener only).
+- [lock/opener/]configuration/action: Allows changing configuration settings of the Nuki Lock/Opener using a JSON formatted value. After receiving the action, the value is set to "--". See the "[Changing Nuki Lock/Opener Configuration](#changing-nuki-lockopener-configuration)" section of this README for possible actions/values
+- [lock/opener/]configuration/commandResult: Result of the last configuration change action as JSON data. See the "[Changing Nuki Lock/Opener Configuration](#changing-nuki-lockopener-configuration)" section of this README for possible values
+- [lock/opener/]configuration/basicJson: The current basic configuration of the Nuki Lock/Opener as JSON data. See [Nuki Smart Lock API](https://developer.nuki.io/page/nuki-smart-lock-api-2/2/#heading--set-config) and [Nuki Opener API](https://developer.nuki.io/page/nuki-opener-api-1/7/#heading--set-config) for available settings. Please note: Longitude and Latitude of the Lock/Opener are not published to MQTT by design. These values can still be changed though.
+- [lock/opener/]configuration/advancedJson: The current advanced configuration of the Nuki Lock/Opener as JSON data. See [Nuki Smart Lock API](https://developer.nuki.io/page/nuki-smart-lock-api-2/2/#heading--advanced-config) and [Nuki Opener API](https://developer.nuki.io/page/nuki-opener-api-1/7/#heading--advanced-config) for available settings.
 
 ### Query
 
-- lock/query/lockstate: Set to 1 to trigger query lockstate. Auto-resets to 0.
-- lock/query/config: Set to 1 to trigger query config. Auto-resets to 0.
-- lock/query/keypad: Set to 1 to trigger query keypad. Auto-resets to 0.
-- lock/query/battery: Set to 1 to trigger query battery. Auto-resets to 0.
-- lock/query/lockstateCommandResult: Set to 1 to trigger query lockstate command result. Auto-resets to 0.
+- [lock/opener/]query/lockstate: Set to 1 to trigger query lockstate. Auto-resets to 0.
+- [lock/opener/]query/config: Set to 1 to trigger query config. Auto-resets to 0.
+- [lock/opener/]query/keypad: Set to 1 to trigger query keypad. Auto-resets to 0.
+- [lock/opener/]query/battery: Set to 1 to trigger query battery. Auto-resets to 0.
+- [lock/opener/]query/lockstateCommandResult: Set to 1 to trigger query lockstate command result. Auto-resets to 0.
 
 ### Battery
 
-- battery/level: Battery level in percent (Lock only).
-- battery/critical: 1 if battery level is critical, otherwise 0.
-- battery/charging: 1 if charging, otherwise 0 (Lock only).
-- battery/voltage: Current Battery voltage (V).
-- battery/drain: The drain of the last lock action in Milliwattseconds (mWs) (Lock only).
-- battery/maxTurnCurrent: The highest current of the turn motor during the last lock action (A) (Lock only).
-- battery/lockDistance: The total distance during the last lock action in centidegrees (Lock only).
-- battery/keypadCritical: 1 if the battery level of a connected keypad is critical, otherwise 0.
-- battery/doorSensorCritical (only available in hybdrid mode): 1 if the battery level of a connected doorsensor is critical, otherwise 0.
-- battery/basicJson: The current battery state (critical, charging, level and keypad critical) of the Nuki Lock/Opener as JSON data.
-- battery/advancedJson: : The current battery state (critical, batteryDrain, batteryVoltage, lockAction, startVoltage, lowestVoltage, lockDistance, startTemperature, maxTurnCurrent and batteryResistance) of the Nuki Lock/Opener as JSON data.
+- [lock/opener/]battery/level: Battery level in percent (Lock only).
+- [lock/opener/]battery/critical: 1 if battery level is critical, otherwise 0.
+- [lock/opener/]battery/charging: 1 if charging, otherwise 0 (Lock only).
+- [lock/opener/]battery/voltage: Current Battery voltage (V).
+- [lock/opener/]battery/drain: The drain of the last lock action in Milliwattseconds (mWs) (Lock only).
+- [lock/opener/]battery/maxTurnCurrent: The highest current of the turn motor during the last lock action (A) (Lock only).
+- [lock/opener/]battery/lockDistance: The total distance during the last lock action in centidegrees (Lock only).
+- [lock/opener/]battery/keypadCritical: 1 if the battery level of a connected keypad is critical, otherwise 0.
+- [lock/opener/]battery/doorSensorCritical (only available in hybrid mode): 1 if the battery level of a connected doorsensor is critical, otherwise 0.
+- [lock/opener/]battery/basicJson: The current battery state (critical, charging, level and keypad critical) of the Nuki Lock/Opener as JSON data.
+- [lock/opener/]battery/advancedJson: : The current battery state (critical, batteryDrain, batteryVoltage, lockAction, startVoltage, lowestVoltage, lockDistance, startTemperature, maxTurnCurrent and batteryResistance) of the Nuki Lock/Opener as JSON data.
 
 ### Keypad
 
@@ -297,8 +388,8 @@ In a browser navigate to the IP address assigned to the ESP32.
 ### Info
 
 - info/nukiHubVersion: Set to the current version number of the Nuki Hub firmware.
-- info/firmwareVersion: Set to the current version number of the Nuki Lock/Opener firmware.
-- info/hardwareVersion: Set to the hardware version number of the Nuki Lock/Opener.
+- [lock/opener/]info/firmwareVersion: Set to the current version number of the Nuki Lock/Opener firmware.
+- [lock/opener/]info/hardwareVersion: Set to the hardware version number of the Nuki Lock/Opener.
 - info/nukiHubIp: Set to the IP of the Nuki Hub.
 - info/nukiHubLatest: Set to the latest available Nuki Hub firmware version number (if update checking is enabled in the settings).
 
@@ -351,7 +442,7 @@ Changing settings has to enabled first in the configuration portal. Check the se
 | batteryType                             | The type of the batteries present in the smart lock.                                             | "Alkali", "Accumulators", "Lithium"                               |`{ "batteryType": "Accumulators" }` |
 | automaticBatteryTypeDetection           | Whether the automatic detection of the battery type is enabled.                                  | 1 = enabled, 0 = disabled                          |`{ "automaticBatteryTypeDetection": "Lock n Go" }` |
 | unlatchDuration                         | Duration in seconds for holding the latch in unlatched position.                                 | Integer between 1 and 30                                          |`{ "unlatchDuration": "3" }`        |
-| autoLockTimeOut                         | Seconds until the smart lock relocks itself after it has been unlocked.                          | Integer between 30 and 180                                        |`{ "autoLockTimeOut": "60" }`       |
+| autoLockTimeOut                         | Seconds until the smart lock relocks itself after it has been unlocked.                          | Integer between 30 and 1800                                       |`{ "autoLockTimeOut": "60" }`       |
 | autoUnLockDisabled                      | Whether auto unlock should be disabled in general.                                               | 1 = auto unlock disabled, 0 = auto unlock enabled                 |`{ "autoUnLockDisabled": "1" }`     |
 | nightModeEnabled                        | Whether nightmode is enabled.                                                                    | 1 = enabled, 0 = disabled                                         |`{ "nightModeEnabled": "1" }`       |
 | nightModeStartTime                      | Start time for nightmode if enabled.                                                             | Time in "HH:MM" format                                            |`{ "nightModeStartTime": "22:00" }` |
@@ -426,10 +517,10 @@ If Home Assistant discovery is enabled (see the [Home  Assistant Discovery](#hom
 After the initial installation of the Nuki Hub firmware via serial connection, further updates can be deployed via OTA update from a browser.<br>
 In the configuration portal, select "Firmware update" from the main page.<br>
 <br>
-The easiest way to upgrade Nuki Hub, if Nuki Hub is connected to the internet, is to select "Auto Update".<br>
+The easiest way to upgrade Nuki Hub, if Nuki Hub is connected to the internet, is to select "Update to latest version".<br>
 This will download the latest Nuki Hub and Nuki Hub updater and automatically upgrade both applications.<br>
 Nuki Hub will reboot 3 times during this process, which will take about 5 minutes.<br>
-If you have enabled "Allow updating using MQTT" you can also use the Home Assistant updater or write "1" to the `nukihub/maintanance/reset` topic to start the update process.<br>
+If you have enabled "Allow updating using MQTT" you can also use the Home Assistant updater or write "1" to the `nukihub/maintanance/update` topic to start the update process.<br>
 <br>
 Alternatively you can select a binary file from your file system to update Nuki Hub or the Nuki Hub updator manually<br>
 You can only update Nuki Hub from the Nuki Hub updater and update the updater only from Nuki Hub<br>
@@ -473,7 +564,7 @@ openssl req -new -key server.key -out server.csr -subj "/C=US/ST=YourState/L=You
 ## Home Assistant Discovery (optional)
 
 This software supports [MQTT Discovery](https://www.home-assistant.io/docs/mqtt/discovery/) for integrating Nuki Hub with Home Assistant.<br>
-To enable autodiscovery, supply the discovery topic that is configured in your Home Assistant instance (If you have not changed this setting in Home Assistant the default is "homeassistant") in the MQTT Configuration page.<br>
+To enable autodiscovery, enable the checkbox on the "MQTT Configuration" page.<br>
 Once enabled, the Nuki Lock and/or Opener and related entities should automatically appear in your Home Assistant MQTT devices.
 
 The following mapping between Home Assistant services and Nuki commands is setup when enabling autodiscovery:
@@ -490,26 +581,26 @@ NOTE2: Home Assistant can be setup manually using the [MQTT Lock integration](ht
 
 If a keypad is connected to the lock, keypad codes can be added, updated and removed. This has to enabled first in the configuration portal. Check "Add, modify and delete keypad codes" under "Access Level Configuration" and save the configuration.
 
-Information about current keypad codes is published as JSON data to the "keypad/json" MQTT topic.<br>
+Information about current keypad codes is published as JSON data to the "[lock/opener]/keypad/json" MQTT topic.<br>
 This needs to be enabled separately by checking "Publish keypad codes information" under "Access Level Configuration" and saving the configuration.
 For security reasons, the code itself is not published, unless this is explicitly enabled in the Nuki Hub settings.
 By default a maximum of 10 entries are published.
 
-To change Nuki Lock/Opener keypad settings set the `keypad/actionJson` topic to a JSON formatted value containing the following nodes.
+To change Nuki Lock/Opener keypad settings set the `[lock/opener]/keypad/actionJson` topic to a JSON formatted value containing the following nodes.
 
-| Node             | Delete   | Add      | Update   | Usage                                                                                                            | Possible values                        |
-|------------------|----------|----------|----------|------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| action           | Required | Required | Required | The action to execute                                                                                            | "delete", "add", "update"              |
-| codeId           | Required | Not used | Required | The code ID of the existing code to delete or update                                                             | Integer                                |
-| code             | Not used | Required | Optional | The code to create or update                                                                       | 6-digit Integer without zero's, can't start with "12"|
-| enabled          | Not used | Not used | Optional | Enable or disable the code, always enabled on add                                                                | 1 = enabled, 0 = disabled              |
-| name             | Not used | Required | Optional | The name of the code to create or update                                                                         | String, max 20 chars                   |
-| timeLimited      | Not used | Optional | Optional | If this authorization is restricted to access only at certain times, requires enabled = 1                        | 1 = enabled, 0 = disabled              |
-| allowedFrom      | Not used | Optional | Optional | The start timestamp from which access should be allowed (requires enabled = 1 and timeLimited = 1)               | "YYYY-MM-DD HH:MM:SS"                  |
-| allowedUntil     | Not used | Optional | Optional | The end timestamp until access should be allowed (requires enabled = 1 and timeLimited = 1)                      | "YYYY-MM-DD HH:MM:SS"                  |
-| allowedWeekdays  | Not used | Optional | Optional | Weekdays on which access should be allowed (requires enabled = 1 and timeLimited = 1)     | Array of days: "mon", "tue", "wed", "thu" , "fri" "sat", "sun"|
-| allowedFromTime  | Not used | Optional | Optional | The start time per day from which access should be allowed (requires enabled = 1 and timeLimited = 1)            | "HH:MM"                                |
-| allowedUntilTime | Not used | Optional | Optional | The end time per day until access should be allowed (requires enabled = 1 and timeLimited = 1)                   | "HH:MM"                                |
+| Node             | Delete   | Add      | Update   |  Check   | Usage                                                                                                            | Possible values                        |
+|------------------|----------|----------|----------|----------|------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| action           | Required | Required | Required | Required | The action to execute                                                                                            | "delete", "add", "update", "check"     |
+| codeId           | Required | Not used | Required | Required | The code ID of the existing code to delete or update                                                             | Integer                                |
+| code             | Not used | Required | Optional | Required | The code to create or update                                                                       | 6-digit Integer without zero's, can't start with "12"|
+| enabled          | Not used | Not used | Optional | Not used | Enable or disable the code, always enabled on add                                                                | 1 = enabled, 0 = disabled              |
+| name             | Not used | Required | Optional | Not used | The name of the code to create or update                                                                         | String, max 20 chars                   |
+| timeLimited      | Not used | Optional | Optional | Not used | If this authorization is restricted to access only at certain times, requires enabled = 1                        | 1 = enabled, 0 = disabled              |
+| allowedFrom      | Not used | Optional | Optional | Not used | The start timestamp from which access should be allowed (requires enabled = 1 and timeLimited = 1)               | "YYYY-MM-DD HH:MM:SS"                  |
+| allowedUntil     | Not used | Optional | Optional | Not used | The end timestamp until access should be allowed (requires enabled = 1 and timeLimited = 1)                      | "YYYY-MM-DD HH:MM:SS"                  |
+| allowedWeekdays  | Not used | Optional | Optional | Not used | Weekdays on which access should be allowed (requires enabled = 1 and timeLimited = 1)     | Array of days: "mon", "tue", "wed", "thu" , "fri" "sat", "sun"|
+| allowedFromTime  | Not used | Optional | Optional | Not used | The start time per day from which access should be allowed (requires enabled = 1 and timeLimited = 1)            | "HH:MM"                                |
+| allowedUntilTime | Not used | Optional | Optional | Not used | The end time per day until access should be allowed (requires enabled = 1 and timeLimited = 1)                   | "HH:MM"                                |
 
 Examples:
 - Delete: `{ "action": "delete", "codeId": "1234" }`
@@ -518,7 +609,7 @@ Examples:
 
 ### Result of attempted keypad code changes
 
-The result of the last configuration change action will be published to the `configuration/commandResultJson` MQTT topic.<br>
+The result of the last keypad change action will be published to the `[lock/opener]/configuration/commandResultJson` MQTT topic.<br>
 Possible values are "noValidPinSet", "keypadControlDisabled", "keypadNotAvailable", "keypadDisabled", "invalidConfig", "invalidJson", "noActionSet", "invalidAction", "noExistingCodeIdSet", "noNameSet", "noValidCodeSet", "noCodeSet", "invalidAllowedFrom", "invalidAllowedUntil", "invalidAllowedFromTime", "invalidAllowedUntilTime", "success", "failed", "timeOut", "working", "notPaired", "error" and "undefined".<br>
 
 ## Keypad control (alternative, optional)
@@ -556,15 +647,15 @@ For example, to add a code:
 - write 1 to enabled
 - write "add" to action
 
-## Time control using JSON (optional)
+## Timecontrol using JSON (optional)
 
-Time control entries can be added, updated and removed. This has to enabled first in the configuration portal. Check "Add, modify and delete time control entries" under "Access Level Configuration" and save the configuration.
+Timecontrol entries can be added, updated and removed. This has to enabled first in the configuration portal. Check "Add, modify and delete timecontrol entries" under "Access Level Configuration" and save the configuration.
 
-Information about current time control entries is published as JSON data to the "timecontrol/json" MQTT topic.<br>
-This needs to be enabled separately by checking "Publish time control entries information" under "Access Level Configuration" and saving the configuration.
+Information about current timecontrol entries is published as JSON data to the "[lock/opener]/timecontrol/json" MQTT topic.<br>
+This needs to be enabled separately by checking "Publish timecontrol entries information" under "Access Level Configuration" and saving the configuration.
 By default a maximum of 10 entries are published.
 
-To change Nuki Lock/Opener time control settings set the `timecontrol/actionJson` topic to a JSON formatted value containing the following nodes.
+To change Nuki Lock/Opener timecontrol settings set the `[lock/opener]/timecontrol/actionJson` topic to a JSON formatted value containing the following nodes.
 
 | Node             | Delete   | Add      | Update   | Usage                                                                                    | Possible values                                                |
 |------------------|----------|----------|----------|------------------------------------------------------------------------------------------|----------------------------------------------------------------|
@@ -573,18 +664,47 @@ To change Nuki Lock/Opener time control settings set the `timecontrol/actionJson
 | enabled          | Not used | Not used | Optional | Enable or disable the entry, always enabled on add                                       | 1 = enabled, 0 = disabled                                      |
 | weekdays         | Not used | Optional | Optional | Weekdays on which the chosen lock action should be exectued (requires enabled = 1)       | Array of days: "mon", "tue", "wed", "thu" , "fri" "sat", "sun" |
 | time             | Not used | Required | Optional | The time on which the chosen lock action should be executed (requires enabled = 1)       | "HH:MM"                                                        |
-| lockAction       | Not used | Required | Optional | The lock action that should be executed on the chosen weekdays at the chosen time (requires enabled = 1) | For the Nuki lock: "Unlock", "Lock", "Unlatch", "LockNgo", "LockNgoUnlatch", "FullLock". For the Nuki Opener: "ActivateRTO", "DeactivateRTO", "ElectricStrikeActuation", "ActivateCM", "DeactivateCM                                                            |
+| lockAction       | Not used | Required | Optional | The lock action that should be executed on the chosen weekdays at the chosen time (requires enabled = 1) | For the Nuki lock: "Unlock", "Lock", "Unlatch", "LockNgo", "LockNgoUnlatch", "FullLock". For the Nuki Opener: "ActivateRTO", "DeactivateRTO", "ElectricStrikeActuation", "ActivateCM", "DeactivateCM |
 
 Examples:
 - Delete: `{ "action": "delete", "entryId": "1234" }`
 - Add: `{ "action": "add", "weekdays": [ "wed", "thu", "fri" ], "time": "08:00", "lockAction": "Unlock" }`
 - Update: `{ "action": "update", "entryId": "1234", "enabled": "1", "weekdays": [ "mon", "tue", "sat", "sun" ], "time": "08:00", "lockAction": "Lock" }`
 
+## Authorization entries control using JSON (optional)
+
+Authorization entries can be updated and removed. This has to enabled first in the configuration portal. Check "Modify and delete authorization entries" under "Access Level Configuration" and save the configuration.
+It is currently not (yet) possible to add authorization entries this way.
+
+Information about current authorization entries is published as JSON data to the "[lock/opener]/authorization/json" MQTT topic.<br>
+This needs to be enabled separately by checking "Publish authorization entries information" under "Access Level Configuration" and saving the configuration.
+By default a maximum of 10 entries are published.
+
+To change Nuki Lock/Opener authorization settings set the `[lock/opener]/authorization/action` topic to a JSON formatted value containing the following nodes.
+
+| Node             | Delete   | Add      | Update   | Usage                                                                                                            | Possible values                        |
+|------------------|----------|----------|----------|------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| action           | Required | Required | Required | The action to execute                                                                                            | "delete", "add", "update"              |
+| authId           | Required | Not used | Required | The auth ID of the existing entry to delete or update                                                            | Integer                                |
+| enabled          | Not used | Not used | Optional | Enable or disable the authorization, always enabled on add                                                       | 1 = enabled, 0 = disabled              |
+| name             | Not used | Required | Optional | The name of the authorization to create or update                                                                | String, max 20 chars                   |
+| remoteAllowed    | Not used | Optional | Optional | If this authorization is allowed remote access, requires enabled = 1                                             | 1 = enabled, 0 = disabled              |
+| timeLimited      | Not used | Optional | Optional | If this authorization is restricted to access only at certain times, requires enabled = 1                        | 1 = enabled, 0 = disabled              |
+| allowedFrom      | Not used | Optional | Optional | The start timestamp from which access should be allowed (requires enabled = 1 and timeLimited = 1)               | "YYYY-MM-DD HH:MM:SS"                  |
+| allowedUntil     | Not used | Optional | Optional | The end timestamp until access should be allowed (requires enabled = 1 and timeLimited = 1)                      | "YYYY-MM-DD HH:MM:SS"                  |
+| allowedWeekdays  | Not used | Optional | Optional | Weekdays on which access should be allowed (requires enabled = 1 and timeLimited = 1)     | Array of days: "mon", "tue", "wed", "thu" , "fri" "sat", "sun"|
+| allowedFromTime  | Not used | Optional | Optional | The start time per day from which access should be allowed (requires enabled = 1 and timeLimited = 1)            | "HH:MM"                                |
+| allowedUntilTime | Not used | Optional | Optional | The end time per day until access should be allowed (requires enabled = 1 and timeLimited = 1)                   | "HH:MM"                                |
+
+Examples:
+- Delete: `{ "action": "delete", "authId": "1234" }`
+- Update: `{ "action": "update", "authId": "1234", "enabled": "1", "name": "Test", "timeLimited": "1", "allowedFrom": "2024-04-12 10:00:00", "allowedUntil": "2034-04-12 10:00:00", "allowedWeekdays": [ "mon", "tue", "sat", "sun" ], "allowedFromTime": "08:00", "allowedUntilTime": "16:00" }`
+
 ## GPIO lock control (optional)
 
-The lock can be controlled via GPIO.<br>
+The lock can be controlled via GPIO. To trigger actions, a connection to ground has to be present for at lease 300ms (or to +3.3V for "General input (pull-down)"). <br>
 <br>
-To enable GPIO control, go the the "GPIO Configuration" page where each GPIO can be configured for a specific role:
+To enable GPIO control, go the the "GPIO Configuration" page where each GPIO can e configured for a specific role:
 - Disabled: The GPIO is disabled
 - Input: Lock: When connect to Ground, a lock command is sent to the lock
 - Input: Unlock: When connect to Ground, an unlock command is sent to the lock
@@ -612,7 +732,7 @@ To enable GPIO control, go the the "GPIO Configuration" page where each GPIO can
 If you prefer to connect to via Ethernet instead of Wi-Fi, you either use one of the supported ESP32 modules with built-in ethernet (see "[Supported devices](#supported-devices)" section)
 or wire a seperate SPI Ethernet module.<Br>
 Currently the Wiznet W5x00 Module (W5100, W5200, W5500), DN9051 and KSZ8851SNL chips are supported.<br>
-To use a supported module, flash the firmware, connect via Wi-Fi and select the correct network hardware in the "MQTT and Network Configuration" section.
+To use a supported module, flash the firmware, connect via Wi-Fi and select the correct network hardware in the "Network Configuration" section.
 
 To wire an external W5x00 module to the ESP, use this wiring scheme:
 
@@ -627,7 +747,7 @@ To wire an external W5x00 module to the ESP, use this wiring scheme:
 
 Now connect via Wi-Fi and change the network hardware to "Generic W5500".<br>
 
-If Ethernet hwardware isn't detected, Wi-Fi is used as a fallback, unless this is disabled in the settings.<br>
+If Ethernet hardware isn't detected or initialised properly after changing the network device, Wi-Fi will be used as a fallback.<br>
 <br>
 Note: LAN8720 modules are only supported on the ESP32 and ESP32-Solo1, not on the ESP32-S3, ESP32-C3 or ESP-C6<br>
 
@@ -636,7 +756,7 @@ Note: LAN8720 modules are only supported on the ESP32 and ESP32-Solo1, not on th
 ### Random Wi-Fi disconnects
 
 Unfortunately the ESP32 has problems with some access points and reconnecting fails.<br>
-As a workaround you can navigate to "MQTT and Network Configuration" and enable "Restart on disconnect".<br>
+As a workaround you can navigate to "Network Configuration" and enable "Restart on disconnect".<br>
 This will reboot the ESP as soon as it gets disconnected from Wi-Fi.<br>
 Also, this reduces the config portal timeout to three minutes to prevent the ESP being stuck in config mode in case an access point is offline temporarily.<br>
 If this still doesn't fix the disconnects and the ESP becomes unreachable, the "Restart timer" option can be used as a last resort.<br>
@@ -659,7 +779,7 @@ A note about the [M5Stack PoESP32 Unit](https://docs.m5stack.com/en/unit/poesp32
 
 Make sure you are using at least version 2023.8.0 of Home Assistant.<br>
 The Home Assistant developers have made changes to MQTT auto discovery which break support for older version and Nuki Hub has adopted these changes.<br>
-This unfortunately means that older versions of Home Assistant are not supported by the Nuki Hub discovery implemenation anymore.
+This unfortunately means that older versions of Home Assistant are not supported by the Nuki Hub discovery implementation anymore.
 
 ## FAQ
 
@@ -693,7 +813,7 @@ This button is disabled by default, but can be enabled in the Home Assistant UI.
 ### When controlling two locks (or openers) connected to two ESPs, both devices react to the same command. When using Home Asistant, the same status is display for both locks.
 
 When using multiple Nuki devices, different paths for each device have to be configured.<br>
-Navigate to "Nuki Configuration" and change the "MQTT Nuki Smartlock Path" or "MQTT Nuki Opener Path" under "Basic Nuki Configuration" for at least one of the devices.<br>
+Navigate to "MQTT Configuration" and change the "MQTT NukiHub Path" under "Basic MQTT Configuration" for at least one of the devices.<br>
 
 ### The Nuki battery is draining quickly.
 

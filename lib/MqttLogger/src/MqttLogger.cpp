@@ -69,29 +69,29 @@ boolean MqttLogger::setBufferSize(uint16_t size)
 }
 
 // send & reset current buffer
-void MqttLogger::sendBuffer() 
+void MqttLogger::sendBuffer()
 {
     if (this->bufferCnt > 0)
     {
         bool doSerial = this->mode==MqttLoggerMode::SerialOnly || this->mode==MqttLoggerMode::MqttAndSerial || this->mode==MqttLoggerMode::MqttAndSerialAndWeb || this->mode==MqttLoggerMode::SerialAndWeb;
         bool doWebSerial = this->mode==MqttLoggerMode::MqttAndSerialAndWeb || this->mode==MqttLoggerMode::SerialAndWeb;
-        
         if (this->mode!=MqttLoggerMode::SerialOnly && this->mode!=MqttLoggerMode::SerialAndWeb && this->client != NULL && this->client->connected()) 
         {
             this->client->publish(topic, 0, true, this->buffer, this->bufferCnt);
-        } else if (this->mode == MqttLoggerMode::MqttAndSerialFallback)
+        }
+        else if (this->mode == MqttLoggerMode::MqttAndSerialFallback)
         {
             doSerial = true;
         }
-        if (doSerial) 
+        if (doSerial)
         {
             Serial.write(this->buffer, this->bufferCnt);
             Serial.println();
         }
         if (doWebSerial)
         {
-            WebSerial.write(this->buffer, this->bufferCnt);
-            WebSerial.println();
+            //WebSerial.write(this->buffer, this->bufferCnt);
+            //WebSerial.println();
         }
         this->bufferCnt=0;
     }

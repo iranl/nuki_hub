@@ -12,16 +12,18 @@
 #include "NukiNetwork.h"
 #include "QueryCommand.h"
 #include "LockActionResult.h"
-
-#define LOCK_LOG_JSON_BUFFER_SIZE 2048
+#include "NukiOfficial.h"
+#include "NukiPublisher.h"
+#include "EspMillis.h"
 
 class NukiNetworkLock : public MqttReceiver
 {
 public:
-    explicit NukiNetworkLock(NukiNetwork* network, Preferences* preferences, char* buffer, size_t bufferSize);
+    explicit NukiNetworkLock(NukiNetwork* network, NukiOfficial* nukiOfficial, Preferences* preferences, char* buffer, size_t bufferSize);
     virtual ~NukiNetworkLock();
 
     void initialize();
+    void update();
 
     void publishKeyTurnerState(const NukiLock::KeyTurnerState& keyTurnerState, const NukiLock::KeyTurnerState& lastKeyTurnerState);
     void publishState(NukiLock::LockState lockState);
@@ -35,15 +37,15 @@ public:
     void publishRssi(const int& rssi);
     void publishRetry(const std::string& message);
     void publishBleAddress(const std::string& address);
-    void publishHASSConfig(char* deviceType, const char* baseTopic, char* name, char* uidString, const char *softwareVersion, const char *hardwareVersion, const bool& hasDoorSensor, const bool& hasKeypad, const bool& publishAuthData, char* lockAction, char* unlockAction, char* openAction);
-    void removeHASSConfig(char* uidString);
     void publishKeypad(const std::list<NukiLock::KeypadEntry>& entries, uint maxKeypadCodeCount);
     void publishTimeControl(const std::list<NukiLock::TimeControlEntry>& timeControlEntries, uint maxTimeControlEntryCount);
+    void publishAuth(const std::list<NukiLock::AuthorizationEntry>& authEntries, uint maxAuthEntryCount);
     void publishStatusUpdated(const bool statusUpdated);
     void publishConfigCommandResult(const char* result);
     void publishKeypadCommandResult(const char* result);
     void publishKeypadJsonCommandResult(const char* result);
     void publishTimeControlCommandResult(const char* result);
+    void publishAuthCommandResult(const char* result);
     void publishOffAction(const int value);
 
     void setLockActionReceivedCallback(LockActionResult (*lockActionReceivedCallback)(const char* value));
@@ -52,7 +54,9 @@ public:
     void setKeypadCommandReceivedCallback(void (*keypadCommandReceivedReceivedCallback)(const char* command, const uint& id, const String& name, const String& code, const int& enabled));
     void setKeypadJsonCommandReceivedCallback(void (*keypadJsonCommandReceivedReceivedCallback)(const char* value));
     void setTimeControlCommandReceivedCallback(void (*timeControlCommandReceivedReceivedCallback)(const char* value));
+    void setAuthCommandReceivedCallback(void (*authCommandReceivedReceivedCallback)(const char* value));
     void onMqttDataReceived(const char* topic, byte* payload, const unsigned int length) override;
+    void setupHASS(int type, uint32_t nukiId, char* nukiName, const char* firmwareVersion, const char* hardwareVersion, bool hasDoorSensor, bool hasKeypad);
 
     void publishFloat(const char* topic, const float value, bool retain, const uint8_t precision = 2);
     void publishInt(const char* topic, const int value, bool retain);
@@ -60,58 +64,42 @@ public:
     void publishULong(const char* topic, const unsigned long value, bool retain);
     void publishLongLong(const char* topic, int64_t value, bool retain);    
     void publishBool(const char* topic, const bool value, bool retain);
-    bool publishString(const char* topic, const String& value, bool retain);
-    bool publishString(const char* topic, const std::string& value, bool retain);
-    bool publishString(const char* topic, const char* value, bool retain);
+    void publishString(const char* topic, const String& value, bool retain);
+    void publishString(const char* topic, const std::string& value, bool retain);
+    void publishString(const char* topic, const char* value, bool retain);
 
+    const uint32_t getAuthId() const;
+    int mqttConnectionState();
     bool reconnected();
     uint8_t queryCommands();
-    //uint8_t _offMode = 0;
-    uint8_t _offState = 0;
-    bool _offCritical = false;
-    uint8_t _offChargeState = 100;
-    bool _offCharging = false;
-    bool _offKeypadCritical = false;
-    uint8_t _offDoorsensorState = 0;
-    bool _offDoorsensorCritical = false;
-    bool _offConnected = false;
-    uint8_t _offCommandResponse = 0;
-    char* _offLockActionEvent;
-    uint8_t _offLockAction = 0;
-    uint8_t _offTrigger = 0;
-    uint32_t _offAuthId = 0;
-    uint32_t _offCodeId = 0;
-    uint8_t _offContext = 0;
-    uint32_t _authId = 0;
-    int64_t _offCommandExecutedTs = 0;
-    NukiLock::LockAction _offCommand = (NukiLock::LockAction)0xff;
-
 
 private:
-    bool comparePrefixedPath(const char* fullPath, const char* subPath, bool offPath = false);
+    bool comparePrefixedPath(const char* fullPath, const char* subPath);
 
     void publishKeypadEntry(const String topic, NukiLock::KeypadEntry entry);
     void buttonPressActionToString(const NukiLock::ButtonPressAction btnPressAction, char* str);
     void homeKitStatusToString(const int hkstatus, char* str);
     void fobActionToString(const int fobact, char* str);
 
+    void (*_officialUpdateReceivedCallback)(const char* path, const char* value) = nullptr;
+
     String concat(String a, String b);
 
-    void buildMqttPath(const char* path, char* outPath, bool offPath = false);
+    void buildMqttPath(const char* path, char* outPath);
 
-    NukiNetwork* _network;
-    Preferences* _preferences;
+    NukiNetwork* _network = nullptr;
+    NukiPublisher* _nukiPublisher = nullptr;
+    NukiOfficial* _nukiOfficial = nullptr;
+    Preferences* _preferences = nullptr;
 
-    std::vector<char*> _offTopics;
+    std::map<uint32_t, String> _authEntries;
     char _mqttPath[181] = {0};
-    char _offMqttPath[181] = {0};
 
     bool _firstTunerStatePublish = true;
     int64_t _lastMaintenanceTs = 0;
     bool _haEnabled = false;
-    bool _reconnected = false;
+    bool _reconnected = false; //SETBACK
     bool _disableNonJSON = false;
-    bool _offEnabled = false;
 
     String _keypadCommandName = "";
     String _keypadCommandCode = "";
@@ -119,6 +107,7 @@ private:
     int _keypadCommandEnabled = 1;
     uint8_t _queryCommands = 0;
     uint32_t _lastRollingLog = 0;
+    uint32_t _authId = 0;
 
     char _nukiName[33];
     char _authName[33];
@@ -127,9 +116,9 @@ private:
     size_t _bufferSize;
 
     LockActionResult (*_lockActionReceivedCallback)(const char* value) = nullptr;
-    void (*_officialUpdateReceivedCallback)(const char* path, const char* value) = nullptr;
     void (*_configUpdateReceivedCallback)(const char* value) = nullptr;
     void (*_keypadCommandReceivedReceivedCallback)(const char* command, const uint& id, const String& name, const String& code, const int& enabled) = nullptr;
     void (*_keypadJsonCommandReceivedReceivedCallback)(const char* value) = nullptr;
     void (*_timeControlCommandReceivedReceivedCallback)(const char* value) = nullptr;
+    void (*_authCommandReceivedReceivedCallback)(const char* value) = nullptr;
 };
