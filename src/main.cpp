@@ -58,7 +58,7 @@ int64_t restartTs = (pow(2,64) - (5 * 1000 * 60000)) / 1000;
 #include "../../src/NukiNetwork.h"
 #include "../../src/EspMillis.h"
 
-int64_t restartTs = 10 * 1000 * 60000;
+int64_t restartTs = 10 * 60 * 1000;
 
 #endif
 
@@ -131,6 +131,28 @@ void setReroute()
 }
 #endif
 
+uint8_t checkPartition()
+{
+    const esp_partition_t* running_partition = esp_ota_get_running_partition();
+    Log->print(F("Partition size: "));
+    Log->println(running_partition->size);
+    Log->print(F("Partition subtype: "));
+    Log->println(running_partition->subtype);
+
+    if(running_partition->size == 1966080)
+    {
+        return 0;    //OLD PARTITION TABLE
+    }
+    else if(running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0)
+    {
+        return 1;    //NEW PARTITION TABLE, RUNNING MAIN APP
+    }
+    else
+    {
+        return 2;    //NEW PARTITION TABLE, RUNNING UPDATER APP
+    }
+}
+
 void networkTask(void *pvParameters)
 {
     int64_t networkLoopTs = 0;
@@ -153,7 +175,7 @@ void networkTask(void *pvParameters)
 
         network->update();
         bool connected = network->isConnected();
-        
+
 #ifdef DEBUG_NUKIHUB
         if(connected && reroute)
         {
@@ -182,6 +204,17 @@ void networkTask(void *pvParameters)
             networkLoopTs = espMillis();
         }
 
+        if(espMillis() > restartTs)
+        {
+            uint8_t partitionType = checkPartition();
+
+            if(partitionType!=1)
+            {
+                esp_ota_set_boot_partition(esp_ota_get_next_update_partition(NULL));
+            }
+
+            restartEsp(RestartReason::RestartTimer);
+        }
         esp_task_wdt_reset();
     }
 }
@@ -277,28 +310,6 @@ void bootloopDetection()
 }
 #endif
 
-uint8_t checkPartition()
-{
-    const esp_partition_t* running_partition = esp_ota_get_running_partition();
-    Log->print(F("Partition size: "));
-    Log->println(running_partition->size);
-    Log->print(F("Partition subtype: "));
-    Log->println(running_partition->subtype);
-
-    if(running_partition->size == 1966080)
-    {
-        return 0;    //OLD PARTITION TABLE
-    }
-    else if(running_partition->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0)
-    {
-        return 1;    //NEW PARTITION TABLE, RUNNING MAIN APP
-    }
-    else
-    {
-        return 2;    //NEW PARTITION TABLE, RUNNING UPDATER APP
-    }
-}
-
 esp_err_t _http_event_handler(esp_http_client_event_t *evt)
 {
     switch (evt->event_id)
@@ -346,6 +357,13 @@ void otaTask(void *pvParameter)
         updateUrl = preferences->getString(preference_ota_main_url);
         preferences->putString(preference_ota_main_url, "");
     }
+    
+    while(!network->isConnected())
+    {
+        Log->println("OTA waiting for network");
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+    }
+    
     Log->println("Starting OTA task");
     esp_http_client_config_t config =
     {
@@ -587,7 +605,7 @@ void setup()
         {
             networkOpener->initialize();
         }
-        
+
         nukiOpener = new NukiOpenerWrapper("NukiHub", deviceIdOpener, bleScanner, networkOpener, gpio, preferences);
         nukiOpener->initialize();
     }

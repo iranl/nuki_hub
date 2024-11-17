@@ -592,6 +592,7 @@ esp_err_t WebCfgServer::buildWifiConnectHtml(PsychicRequest *request)
     response.print("<table>");
     printInputField(&response, "WIFISSID", "SSID", "", 32, "id=\"inputssid\"", false, true);
     printInputField(&response, "WIFIPASS", "Secret key", "", 63, "id=\"inputpass\"", false, true);
+    printCheckBox(&response, "FINDBESTRSSI", "Find AP with best signal (disable for hidden SSID)", _preferences->getBool(preference_find_best_rssi, true), "");
     response.print("</table>");
     response.print("<h3>IP Address assignment</h3>");
     response.print("<table>");
@@ -673,6 +674,13 @@ bool WebCfgServer::processWiFi(PsychicRequest *request, String& message)
             if(_preferences->getString(preference_ip_dns_server, "") != value)
             {
                 _preferences->putString(preference_ip_dns_server, value);
+            }
+        }
+        else if(key == "FINDBESTRSSI")
+        {
+            if(_preferences->getBool(preference_find_best_rssi, false) != (value == "1"))
+            {
+                _preferences->putBool(preference_find_best_rssi, (value == "1"));
             }
         }
     }
@@ -1813,6 +1821,16 @@ bool WebCfgServer::processArgs(PsychicRequest *request, String& message)
             if(_preferences->getInt(preference_network_timeout, 60) != value.toInt())
             {
                 _preferences->putInt(preference_network_timeout, value.toInt());
+                Log->print(F("Setting changed: "));
+                Log->println(key);
+                //configChanged = true;
+            }
+        }
+        else if(key == "FINDBESTRSSI")
+        {
+            if(_preferences->getBool(preference_find_best_rssi, false) != (value == "1"))
+            {
+                _preferences->putBool(preference_find_best_rssi, (value == "1"));
                 Log->print(F("Setting changed: "));
                 Log->println(key);
                 //configChanged = true;
@@ -3534,6 +3552,7 @@ esp_err_t WebCfgServer::buildNetworkConfigHtml(PsychicRequest *request)
     printCheckBox(&response, "RSTDISC", "Restart on disconnect", _preferences->getBool(preference_restart_on_disconnect), "");
     printCheckBox(&response, "UPTIME", "Update Nuki Hub and Lock/Opener time using NTP", _preferences->getBool(preference_update_time), "");
     printCheckBox(&response, "CHECKUPDATE", "Check for Firmware Updates every 24h", _preferences->getBool(preference_check_updates), "");
+    printCheckBox(&response, "FINDBESTRSSI", "Find WiFi AP with strongest signal", _preferences->getBool(preference_find_best_rssi, false), "");    
     response.print("</table>");
     response.print("<h3>IP Address assignment</h3>");
     response.print("<table>");
@@ -3607,7 +3626,7 @@ esp_err_t WebCfgServer::buildAdvancedConfigHtml(PsychicRequest *request)
     response.print(_preferences->getBool(preference_enable_bootloop_reset, false) ? "Enabled" : "Disabled");
     response.print("</td></tr>");
     printCheckBox(&response, "DISNTWNOCON", "Disable Network if not connected within 60s", _preferences->getBool(preference_disable_network_not_connected, false), "");
-    printCheckBox(&response, "WEBLOG", "Enable WebSerial logging", _preferences->getBool(preference_webserial_enabled), "");
+    //printCheckBox(&response, "WEBLOG", "Enable WebSerial logging", _preferences->getBool(preference_webserial_enabled), "");
     printCheckBox(&response, "BTLPRST", "Enable Bootloop prevention (Try to reset these settings to default on bootloop)", true, "");
     printInputField(&response, "BUFFSIZE", "Char buffer size (min 4096, max 32768)", _preferences->getInt(preference_buffer_size, CHAR_BUFFER_SIZE), 6, "");
     response.print("<tr><td>Advised minimum char buffer size based on current settings</td><td id=\"mincharbuffer\"></td>");
@@ -4089,10 +4108,12 @@ esp_err_t WebCfgServer::buildInfoHtml(PsychicRequest *request)
     if(esp_psram_get_size() > 0)
     {
         response.print("\nPSRAM Available: Yes");
+        response.print("\nFree usable PSRAM: ");
+        response.print(ESP.getFreePsram());
+        response.print("\nTotal usable PSRAM: ");
+        response.print(ESP.getPsramSize());
         response.print("\nTotal PSRAM: ");
         response.print(esp_psram_get_size());
-        response.print("\nFree PSRAM: ");
-        response.print((esp_get_free_heap_size() - ESP.getFreeHeap()));
         response.print("\nTotal free heap: ");
         response.print(esp_get_free_heap_size());
     }
@@ -4191,6 +4212,9 @@ esp_err_t WebCfgServer::buildInfoHtml(PsychicRequest *request)
         {
             response.print(_preferences->getInt(preference_rssi_publish_interval, 60));
         }
+
+        response.print("\nFind WiFi AP with strongest signal: ");
+        response.print(_preferences->getBool(preference_find_best_rssi, false) ? "Yes" : "No");
     }
 #endif
     response.print("\nRestart ESP32 on network disconnect enabled: ");
@@ -4670,7 +4694,7 @@ esp_err_t WebCfgServer::processUnpair(PsychicRequest *request, bool opener)
     {
         _nukiOpener->unpair();
     }
-    
+
     _network->disableHASS();
     waitAndProcess(false, 1000);
     restartEsp(RestartReason::DeviceUnpaired);
