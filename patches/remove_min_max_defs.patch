@@ -1,0 +1,25 @@
+commit ca6c6173fca923cfa1966891fc6623fd9f9cb323
+Author: timoxd7 <timoxd7@gmx.de>
+Date:   Mon Nov 7 14:53:12 2022 +0100
+
+    Moved min/max macros from global scope in header file to translation unit exlusice c files
+
+diff --git a/porting/nimble/include/os/os.h b/porting/nimble/include/os/os.h
+index ec495df9b..64800956c 100644
+--- a/porting/nimble/include/os/os.h
++++ b/porting/nimble/include/os/os.h
+@@ -30,14 +30,6 @@ extern "C" {
+ #define static_assert _Static_assert
+ #endif
+ 
+-#ifndef min
+-#define min(a, b) ((a)<(b)?(a):(b))
+-#endif
+-
+-#ifndef max
+-#define max(a, b) ((a)>(b)?(a):(b))
+-#endif
+-
+ #include "syscfg/syscfg.h"
+ #include "nimble/nimble_npl.h"
+ 
