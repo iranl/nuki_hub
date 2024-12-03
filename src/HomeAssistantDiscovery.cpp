@@ -5,10 +5,10 @@
 #include "MqttTopics.h"
 
 HomeAssistantDiscovery::HomeAssistantDiscovery(NetworkDevice* device, Preferences *preferences, char* buffer, size_t bufferSize)
-: _device(device),
-  _preferences(preferences),
-  _buffer(buffer),
-  _bufferSize(bufferSize)
+    : _device(device),
+      _preferences(preferences),
+      _buffer(buffer),
+      _bufferSize(bufferSize)
 {
     _discoveryTopic = _preferences->getString(preference_mqtt_hass_discovery, "");
     _baseTopic = _preferences->getString(preference_mqtt_lock_path);
@@ -573,6 +573,26 @@ void HomeAssistantDiscovery::publishHASSDeviceConfig(char* deviceType, const cha
         {(char*)"val_tpl", (char*)"{{value_json.critical}}" }
     });
 
+    // Battery charging
+    publishHassTopic("binary_sensor",
+                     "battery_charging",
+                     uidString,
+                     "_battery_charging",
+                     "Battery charging",
+                     name,
+                     baseTopic,
+                     String("~") + mqtt_topic_battery_basic_json,
+                     deviceType,
+                     "battery",
+                     "",
+                     "diagnostic",
+                     "",
+    {
+        {(char*)"pl_on", (char*)"1"},
+        {(char*)"pl_off", (char*)"0"},
+        {(char*)"val_tpl", (char*)"{{value_json.charging}}" }
+    });
+    
     // Battery voltage
     publishHassTopic("sensor",
                      "battery_voltage",
@@ -608,7 +628,7 @@ void HomeAssistantDiscovery::publishHASSDeviceConfig(char* deviceType, const cha
                      "",
     { { (char*)"en", (char*)"true" } });
 
-    if(_offEnabled)
+    if(_offEnabled && strcmp(deviceType, "SmartLock") == 0)
     {
         // Hybrid connected
         String hybridPath = _baseTopic;
@@ -2790,9 +2810,7 @@ void HomeAssistantDiscovery::publishHASSConfigAdditionalOpenerEntities(char *dev
                          String("~") + mqtt_topic_config_action,
         {
             { (char*)"en", (char*)"true" },
-            { (char*)"pl_on", (char*)"{ \"rebootNuki\": \"1\"}" },
-            { (char*)"pl_off", (char*)"{ \"rebootNuki\": \"0\"}" },
-            { (char*)"val_tpl", (char*)"{{value_json.rebootNuki}}" }
+            { (char*)"pl_prs", (char*)"{ \"rebootNuki\": \"1\"}" }
         });
     }
     else
@@ -2905,20 +2923,20 @@ void HomeAssistantDiscovery::publishHASSConfigKeypad(char *deviceType, const cha
 }
 
 void HomeAssistantDiscovery::publishHassTopic(const String& mqttDeviceType,
-                                   const String& mqttDeviceName,
-                                   const String& uidString,
-                                   const String& uidStringPostfix,
-                                   const String& displayName,
-                                   const String& name,
-                                   const String& baseTopic,
-                                   const String& stateTopic,
-                                   const String& deviceType,
-                                   const String& deviceClass,
-                                   const String& stateClass,
-                                   const String& entityCat,
-                                   const String& commandTopic,
-                                   std::vector<std::pair<char*, char*>> additionalEntries
-                                  )
+        const String& mqttDeviceName,
+        const String& uidString,
+        const String& uidStringPostfix,
+        const String& displayName,
+        const String& name,
+        const String& baseTopic,
+        const String& stateTopic,
+        const String& deviceType,
+        const String& deviceClass,
+        const String& stateClass,
+        const String& entityCat,
+        const String& commandTopic,
+        std::vector<std::pair<char*, char*>> additionalEntries
+                                             )
 {
     if (_discoveryTopic != "")
     {
@@ -2957,6 +2975,7 @@ void HomeAssistantDiscovery::removeHASSConfig(char* uidString)
 {
     removeHassTopic((char*)"lock", (char*)"smartlock", uidString);
     removeHassTopic((char*)"binary_sensor", (char*)"battery_low", uidString);
+    removeHassTopic((char*)"binary_sensor", (char*)"battery_charging", uidString);    
     removeHassTopic((char*)"binary_sensor", (char*)"keypad_battery_low", uidString);
     removeHassTopic((char*)"sensor", (char*)"battery_voltage", uidString);
     removeHassTopic((char*)"sensor", (char*)"trigger", uidString);
@@ -3056,18 +3075,18 @@ void HomeAssistantDiscovery::removeHASSConfigTopic(char *deviceType, char *name,
 }
 
 JsonDocument HomeAssistantDiscovery::createHassJson(const String& uidString,
-                                                    const String& uidStringPostfix,
-                                                    const String& displayName,
-                                                    const String& name,
-                                                    const String& baseTopic,
-                                                    const String& stateTopic,
-                                                    const String& deviceType,
-                                                    const String& deviceClass,
-                                                    const String& stateClass,
-                                                    const String& entityCat,
-                                                    const String& commandTopic,
-                                                    std::vector<std::pair<char*, char*>> additionalEntries
-                                                                                    )
+        const String& uidStringPostfix,
+        const String& displayName,
+        const String& name,
+        const String& baseTopic,
+        const String& stateTopic,
+        const String& deviceType,
+        const String& deviceClass,
+        const String& stateClass,
+        const String& entityCat,
+        const String& commandTopic,
+        std::vector<std::pair<char*, char*>> additionalEntries
+                                                   )
 {
     JsonDocument json;
     json.clear();

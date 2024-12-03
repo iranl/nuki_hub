@@ -72,7 +72,6 @@ private:
     esp_err_t processFactoryReset(PsychicRequest *request);
     void printTextarea(PsychicStreamResponse *response, const char *token, const char *description, const char *value, const size_t& maxLength, const bool& enabled = true, const bool& showLengthRestriction = false);
     void printDropDown(PsychicStreamResponse *response, const char *token, const char *description, const String preselectedValue, std::vector<std::pair<String, String>> options, const String className);
-    void buildNavigationButton(PsychicStreamResponse *response, const char* caption, const char* targetPath, const char* labelText = "");
     void buildNavigationMenuEntry(PsychicStreamResponse *response, const char *title, const char *targetPath, const char* warningMessage = "");
 
     const std::vector<std::pair<String, String>> getNetworkDetectionOptions() const;
@@ -99,10 +98,10 @@ private:
     std::vector<int> _rssiList;
     String generateConfirmCode();
     String _confirmCode = "----";
+    
     esp_err_t buildSSIDListHtml(PsychicRequest *request);
     esp_err_t buildConfirmHtml(PsychicRequest *request, const String &message, uint32_t redirectDelay = 5, bool redirect = false);
     esp_err_t buildOtaHtml(PsychicRequest *request, bool debug = false);
-    esp_err_t buildOtaCompletedHtml(PsychicRequest *request);
     esp_err_t sendCss(PsychicRequest *request);
     esp_err_t sendFavicon(PsychicRequest *request);
     void createSsidList();
@@ -110,7 +109,6 @@ private:
     void waitAndProcess(const bool blocking, const uint32_t duration);
     esp_err_t handleOtaUpload(PsychicRequest *request, const String& filename, uint64_t index, uint8_t *data, size_t len, bool final);
     void printCheckBox(PsychicStreamResponse *response, const char* token, const char* description, const bool value, const char* htmlClass);
-    void printProgress(size_t prg, size_t sz);
     #ifndef CONFIG_IDF_TARGET_ESP32H2
     esp_err_t buildWifiConnectHtml(PsychicRequest *request);
     bool processWiFi(PsychicRequest *request, String& message);
@@ -123,14 +121,10 @@ private:
     NukiNetwork* _network = nullptr;
     Preferences* _preferences = nullptr;
 
-    bool _hasCredentials = false;
     char _credUser[31] = {0};
     char _credPassword[31] = {0};
     bool _allowRestartToPortal = false;
     uint8_t _partitionType = 0;
-    uint32_t _transferredSize = 0;
-    int64_t _otaStartTs = 0;
     size_t _otaContentLen = 0;
     String _hostname;
-    bool _enabled = true;
 };

@@ -47,7 +47,6 @@ WebCfgServer::WebCfgServer(NukiNetwork* network, Preferences* preferences, bool 
         memset(&_credUser, 0, sizeof(_credUser));
         memset(&_credPassword, 0, sizeof(_credPassword));
 
-        _hasCredentials = true;
         const char *user = str.c_str();
         memcpy(&_credUser, user, str.length());
 
@@ -159,9 +158,9 @@ void WebCfgServer::initialize()
         _psychicServer->on("/savewifi", HTTP_POST, [&](PsychicRequest *request)
         {
             if(strlen(_credUser) > 0 && strlen(_credPassword) > 0 && !request->authenticate(_credUser, _credPassword))
-                {
-                    return request->requestAuthentication(BASIC_AUTH, "Nuki Hub", "You must log in.");
-                }
+            {
+                return request->requestAuthentication(BASIC_AUTH, "Nuki Hub", "You must log in.");
+            }
             String message = "";
             bool connected = processWiFi(request, message);
             esp_err_t res = buildConfirmHtml(request, message, 10, true);
@@ -876,7 +875,7 @@ esp_err_t WebCfgServer::buildOtaHtml(PsychicRequest *request, bool debug)
         String currentVersion = NUKI_HUB_VERSION;
         const char* latestVersion;
 
-        if(atof(doc["release"]["version"]) >= atof(currentVersion.c_str()))
+        if(atof(doc["release"]["version_int"]) >= NUKI_HUB_VERSION_INT)
         {
             latestVersion = doc["release"]["fullversion"];
         }
@@ -960,22 +959,6 @@ esp_err_t WebCfgServer::buildOtaHtml(PsychicRequest *request, bool debug)
     return response.endSend();
 }
 
-esp_err_t WebCfgServer::buildOtaCompletedHtml(PsychicRequest *request)
-{
-    PsychicStreamResponse response(request, "text/plain");
-    response.beginSend();
-    buildHtmlHeader(&response);
-
-    response.print("<div>Over-the-air update completed.<br>You will be forwarded automatically.</div>");
-    response.print("<script type=\"text/javascript\">");
-    response.print("window.addEventListener('load', function () {");
-    response.print("   setTimeout(\"location.href = '/';\",10000);");
-    response.print("});");
-    response.print("</script>");
-    response.print("</body></html>");
-    return response.endSend();
-}
-
 void WebCfgServer::buildHtmlHeader(PsychicStreamResponse *response, String additionalHeader)
 {
     response->print("<html><head>");
@@ -1002,11 +985,6 @@ void WebCfgServer::waitAndProcess(const bool blocking, const uint32_t duration)
             vTaskDelay( 50 / portTICK_PERIOD_MS);
         }
     }
-}
-
-void WebCfgServer::printProgress(size_t prg, size_t sz)
-{
-    Log->printf("Progress: %d%%\n", (prg*100)/_otaContentLen);
 }
 
 esp_err_t WebCfgServer::handleOtaUpload(PsychicRequest *request, const String& filename, uint64_t index, uint8_t *data, size_t len, bool final)
@@ -1042,7 +1020,6 @@ esp_err_t WebCfgServer::handleOtaUpload(PsychicRequest *request, const String& f
                 return(ESP_FAIL);
             }
 
-            _otaStartTs = espMillis();
             esp_task_wdt_config_t twdt_config =
             {
                 .timeout_ms = 30000,
@@ -1609,7 +1586,7 @@ bool WebCfgServer::processArgs(PsychicRequest *request, String& message)
         }
         else if(key == "NWCUSTADDR")
         {
-            if(_preferences->getInt(preference_network_custom_addr, 0) != value.toInt())
+            if(_preferences->getInt(preference_network_custom_addr, -1) != value.toInt())
             {
                 networkReconfigure = true;
                 _preferences->putInt(preference_network_custom_addr, value.toInt());
@@ -3534,7 +3511,7 @@ esp_err_t WebCfgServer::buildNetworkConfigHtml(PsychicRequest *request)
 #endif
     printCheckBox(&response, "RSTDISC", "Restart on disconnect", _preferences->getBool(preference_restart_on_disconnect), "");
     printCheckBox(&response, "CHECKUPDATE", "Check for Firmware Updates every 24h", _preferences->getBool(preference_check_updates), "");
-    printCheckBox(&response, "FINDBESTRSSI", "Find WiFi AP with strongest signal", _preferences->getBool(preference_find_best_rssi, false), "");    
+    printCheckBox(&response, "FINDBESTRSSI", "Find WiFi AP with strongest signal", _preferences->getBool(preference_find_best_rssi, false), "");
     response.print("</table>");
     response.print("<h3>IP Address assignment</h3>");
     response.print("<table>");
@@ -4041,10 +4018,11 @@ esp_err_t WebCfgServer::buildConfigureWifiHtml(PsychicRequest *request)
     PsychicStreamResponse response(request, "text/plain");
     response.beginSend();
     buildHtmlHeader(&response);
+    response.print("<form method=\"get\" action=\"wifimanager\">");
     response.print("<h3>Wi-Fi</h3>");
-    response.print("Click confirm to remove saved WiFi settings and restart ESP into Wi-Fi configuration mode. After restart, connect to ESP access point to reconfigure Wi-Fi.<br><br>");
-    String wifiMgrUrl = "/wifimanager?CONFIRMTOKEN=" + _confirmCode;
-    buildNavigationButton(&response, "Confirm", wifiMgrUrl.c_str());
+    response.print("Click confirm to remove saved WiFi settings and restart ESP into Wi-Fi configuration mode. After restart, connect to ESP access point to reconfigure Wi-Fi.<br><br><br>");
+    response.print("<input type=\"hidden\" name=\"CONFIRMTOKEN\" value=\"" + _confirmCode + "\" /><input type=\"submit\" value=\"Reboot\" /></form>");
+    response.print("</form>");
     response.print("</body></html>");
     return response.endSend();
 }
@@ -4894,18 +4872,6 @@ void WebCfgServer::printDropDown(PsychicStreamResponse *response, const char *to
 
     response->print("</select>");
     response->print("</td></tr>");
-}
-
-void WebCfgServer::buildNavigationButton(PsychicStreamResponse *response, const char *caption, const char *targetPath, const char* labelText)
-{
-    response->print("<form method=\"get\" action=\"");
-    response->print(targetPath);
-    response->print("\">");
-    response->print("<button type=\"submit\">");
-    response->print(caption);
-    response->print("</button> ");
-    response->print(labelText);
-    response->print("</form>");
 }
 
 void WebCfgServer::buildNavigationMenuEntry(PsychicStreamResponse *response, const char *title, const char *targetPath, const char* warningMessage)

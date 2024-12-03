@@ -57,7 +57,8 @@ public:
     void publishLongLong(const char* prefix, const char* topic, int64_t value, bool retain);
     void publishBool(const char* prefix, const char* topic, const bool value, bool retain);
     void publishString(const char* prefix, const char* topic, const char* value, bool retain);
-    void publish(const char *topic, const char *value, bool retain);
+    void publish(const char* prefix, const char *topic, const char *value, bool retain);
+    void publish(const char* path, const char *value, bool retain);
     void removeTopic(const String& mqttPath, const String& mqttTopic);
     void batteryTypeToString(const Nuki::BatteryType battype, char* str);
     void advertisingModeToString(const Nuki::AdvertisingMode advmode, char* str);
@@ -124,7 +125,6 @@ private:
     const char* _lastWillPayload = "offline";
     char _mqttConnectionStateTopic[211] = {0};
     String _lockPath;
-    String _brokerAddr;
 
     HomeAssistantDiscovery* _hadiscovery = nullptr;
 
@@ -142,7 +142,6 @@ private:
     char _mqttBrokerAddr[101] = {0};
     char _mqttUser[31] = {0};
     char _mqttPass[31] = {0};
-    char _mqttPresencePrefix[181] = {0};
     char _maintenancePathPrefix[181] = {0};
     int _networkTimeout = 0;
     std::vector<MqttReceiver*> _mqttReceivers;
@@ -155,7 +154,6 @@ private:
     std::vector<String> _subscribedTopics;
     std::map<String, String> _initTopics;
     int64_t _lastConnectedTs = 0;
-    int64_t _lastMQTTConnectionAttemptTs = 0;
     int64_t _lastMaintenanceTs = 0;
     int64_t _lastUpdateCheckTs = 0;
     int64_t _lastRssiTs = 0;
