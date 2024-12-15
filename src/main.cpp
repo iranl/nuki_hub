@@ -511,15 +511,17 @@ void setup()
     if(!doOta)
     {
         psychicServer = new PsychicHttpServer;
-        psychicServer->config.max_uri_handlers = 40;
-        psychicServer->config.stack_size = HTTPD_TASK_SIZE;
-        psychicServer->listen(80);
+        //psychicServer->config.max_uri_handlers = 40;
+        //psychicServer->config.stack_size = HTTPD_TASK_SIZE;
+        psychicServer->setPort(80);
         webCfgServer = new WebCfgServer(network, preferences, network->networkDeviceType() == NetworkDeviceType::WiFi, partitionType, psychicServer);
         webCfgServer->initialize();
-        psychicServer->onNotFound([](PsychicRequest* request)
+        psychicServer->onNotFound([](PsychicRequest* request, PsychicResponse *response)
         {
-            return request->redirect("/");
+            return response->redirect("/");
         });
+        
+        psychicServer->start();
     }
 #else
     if(preferences->getBool(preference_enable_bootloop_reset, false))
@@ -607,18 +609,19 @@ void setup()
     if(!doOta && !disableNetwork && (forceEnableWebServer || preferences->getBool(preference_webserver_enabled, true) || preferences->getBool(preference_webserial_enabled, false)))
     {
         psychicServer = new PsychicHttpServer;
-        psychicServer->config.max_uri_handlers = 40;
-        psychicServer->config.stack_size = HTTPD_TASK_SIZE;
-        psychicServer->listen(80);
+        //psychicServer->config.max_uri_handlers = 40;
+        //psychicServer->config.stack_size = HTTPD_TASK_SIZE;
+        psychicServer->setPort(80);
 
         if(forceEnableWebServer || preferences->getBool(preference_webserver_enabled, true))
         {
             webCfgServer = new WebCfgServer(nuki, nukiOpener, network, gpio, preferences, network->networkDeviceType() == NetworkDeviceType::WiFi, partitionType, psychicServer);
             webCfgServer->initialize();
-            psychicServer->onNotFound([](PsychicRequest* request)
+            psychicServer->onNotFound([](PsychicRequest* request, PsychicResponse *response)
             {
-                return request->redirect("/");
+                return response->redirect("/");
             });
+            psychicServer->start();
         }
         /*
 #ifdef DEBUG_NUKIHUB
