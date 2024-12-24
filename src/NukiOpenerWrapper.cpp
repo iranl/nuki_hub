@@ -5,6 +5,7 @@
 #include "RestartReason.h"
 #include <NukiOpenerUtils.h>
 #include "Config.h"
+#include "hal/wdt_hal.h"
 
 NukiOpenerWrapper* nukiOpenerInst;
 Preferences* nukiOpenerPreferences = nullptr;
@@ -48,7 +49,14 @@ NukiOpenerWrapper::~NukiOpenerWrapper()
 
 void NukiOpenerWrapper::initialize()
 {
-    _nukiOpener.initialize();
+    _nukiOpener.setDebugConnect(_preferences->getBool(preference_debug_connect, false));
+    _nukiOpener.setDebugCommunication(_preferences->getBool(preference_debug_communication, false));
+    _nukiOpener.setDebugReadableData(_preferences->getBool(preference_debug_readable_data, false));
+    _nukiOpener.setDebugHexData(_preferences->getBool(preference_debug_hex_data, false));
+    _nukiOpener.setDebugCommand(_preferences->getBool(preference_debug_command, false));
+    _nukiOpener.registerLogger(Log);
+    
+    _nukiOpener.initialize(_preferences->getBool(preference_connect_mode, true));
     _nukiOpener.registerBleScanner(_bleScanner);
     _nukiOpener.setEventHandler(this);
     _nukiOpener.setConnectTimeout(3);
@@ -177,6 +185,10 @@ void NukiOpenerWrapper::readSettings()
 
 void NukiOpenerWrapper::update()
 {
+    wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
     if(!_paired)
     {
         Log->println(F("Nuki opener start pairing"));
@@ -4019,6 +4031,10 @@ void NukiOpenerWrapper::notify(Nuki::EventType eventType)
             _statusUpdatedTs = espMillis();
             _network->publishStatusUpdated(_statusUpdated);
         }
+    }
+    else if(eventType == Nuki::EventType::ERROR_BAD_PIN)
+    {
+        _preferences->putInt(preference_lock_pin_status, 2);
     }
 }
 

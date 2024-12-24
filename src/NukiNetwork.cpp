@@ -10,6 +10,7 @@
 #include "networkDevices/WifiDevice.h"
 #endif
 #include "networkDevices/EthernetDevice.h"
+#include "hal/wdt_hal.h"
 
 NukiNetwork* NukiNetwork::_inst = nullptr;
 
@@ -225,6 +226,10 @@ void NukiNetwork::initialize()
 
 bool NukiNetwork::update()
 {
+    wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
     _device->update();
     return true;
 }
@@ -319,7 +324,7 @@ void NukiNetwork::initialize()
                     buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
                     publishString(_lockPath.c_str(), gpioPath, "input", false);
                     buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                    publishString(_lockPath.c_str(), gpioPath, std::to_string(digitalRead(pinEntry.pin)).c_str(), false);
+                    publishString(_lockPath.c_str(), gpioPath, std::to_string(digitalRead(pinEntry.pin)).c_str(), _retainGpio);
                 }
                 break;
             case PinRole::GeneralOutput:
@@ -348,6 +353,7 @@ void NukiNetwork::readSettings()
     _restartOnDisconnect = _preferences->getBool(preference_restart_on_disconnect, false);
     _checkUpdates = _preferences->getBool(preference_check_updates, false);
     _rssiPublishInterval = _preferences->getInt(preference_rssi_publish_interval, 0) * 1000;
+    _retainGpio = _preferences->getBool(preference_retain_gpio, false);
 
     if(_rssiPublishInterval == 0)
     {
@@ -367,6 +373,10 @@ void NukiNetwork::readSettings()
 
 bool NukiNetwork::update()
 {
+    wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
     int64_t ts = espMillis();
     _device->update();
 
@@ -564,7 +574,7 @@ bool NukiNetwork::update()
             uint8_t pinState = digitalRead(pin) == HIGH ? 1 : 0;
             char gpioPath[250];
             buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pin)).c_str(), mqtt_topic_gpio_state});
-            publishInt(_lockPath.c_str(), gpioPath, pinState, false);
+            publishInt(_lockPath.c_str(), gpioPath, pinState, _retainGpio);
 
             Log->print(F("GPIO "));
             Log->print(pin);
@@ -961,8 +971,8 @@ void NukiNetwork::onMqttDataReceived(const char* topic, byte* payload, const uns
                 }
                 else
                 {
-                    _preferences->putString(preference_ota_updater_url, GITHUB_BETA_RELEASE_BINARY_URL);
-                    _preferences->putString(preference_ota_main_url, GITHUB_BETA_UPDATER_BINARY_URL);
+                    _preferences->putString(preference_ota_updater_url, GITHUB_BETA_UPDATER_BINARY_URL);
+                    _preferences->putString(preference_ota_main_url, GITHUB_BETA_RELEASE_BINARY_URL);
                     Log->println(F("Updating to latest beta version."));
                     delay(200);
                     restartEsp(RestartReason::OTAReboot);
@@ -976,8 +986,8 @@ void NukiNetwork::onMqttDataReceived(const char* topic, byte* payload, const uns
                 }
                 else
                 {
-                    _preferences->putString(preference_ota_updater_url, GITHUB_MASTER_RELEASE_BINARY_URL);
-                    _preferences->putString(preference_ota_main_url, GITHUB_MASTER_UPDATER_BINARY_URL);
+                    _preferences->putString(preference_ota_updater_url, GITHUB_MASTER_UPDATER_BINARY_URL);
+                    _preferences->putString(preference_ota_main_url, GITHUB_MASTER_RELEASE_BINARY_URL);
                     Log->println(F("Updating to latest developmemt version."));
                     delay(200);
                     restartEsp(RestartReason::OTAReboot);

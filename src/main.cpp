@@ -7,6 +7,8 @@
 #include "esp_https_ota.h"
 #include "esp_task_wdt.h"
 #include "Config.h"
+#include "esp32-hal-log.h"
+#include "hal/wdt_hal.h"
 
 #ifndef NUKI_HUB_UPDATER
 #include "NukiWrapper.h"
@@ -109,23 +111,38 @@ int _log_vprintf(const char *fmt, va_list args)
     {
         Log->write((uint8_t *)log_print_buffer, (size_t)ret);
     }
-    return 0; //return vprintf(fmt, args);
+    return 0;
 }
 
 void setReroute()
 {
     esp_log_set_vprintf(_log_vprintf);
+
+    #ifdef DEBUG_NUKIHUB
+    esp_log_level_set("*", ESP_LOG_DEBUG);
+    esp_log_level_set("nvs", ESP_LOG_INFO);
+    esp_log_level_set("wifi", ESP_LOG_INFO);
+    #else
+    /*
+    esp_log_level_set("*", ESP_LOG_NONE);
+    esp_log_level_set("httpd", ESP_LOG_ERROR);
+    esp_log_level_set("httpd_sess", ESP_LOG_ERROR);
+    esp_log_level_set("httpd_parse", ESP_LOG_ERROR);
+    esp_log_level_set("httpd_txrx", ESP_LOG_ERROR);
+    esp_log_level_set("httpd_uri", ESP_LOG_ERROR);
+    esp_log_level_set("event", ESP_LOG_ERROR);  
+    esp_log_level_set("psychic", ESP_LOG_ERROR);
+    esp_log_level_set("ARDUINO", ESP_LOG_DEBUG);
+    esp_log_level_set("nvs", ESP_LOG_ERROR);
+    esp_log_level_set("wifi", ESP_LOG_ERROR);
+    */
+    #endif
+
     if(preferences->getBool(preference_mqtt_log_enabled))
     {
-        esp_log_level_set("*", ESP_LOG_INFO);
         esp_log_level_set("mqtt", ESP_LOG_NONE);
     }
-    else
-    {
-        esp_log_level_set("*", ESP_LOG_DEBUG);
-        esp_log_level_set("nvs", ESP_LOG_INFO);
-        esp_log_level_set("wifi", ESP_LOG_INFO);
-    }
+
 }
 #endif
 
@@ -174,13 +191,13 @@ void networkTask(void *pvParameters)
         network->update();
         bool connected = network->isConnected();
 
-#ifdef DEBUG_NUKIHUB
+        #ifndef NUKI_HUB_UPDATER
         if(connected && reroute)
         {
             reroute = false;
             setReroute();
         }
-#endif
+        #endif
 
 #ifndef NUKI_HUB_UPDATER
         wifiConnected = network->wifiConnected();
@@ -337,6 +354,12 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
         Log->println("HTTP_EVENT_REDIRECT");
         break;
     }
+
+    wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
+
     return ESP_OK;
 }
 
@@ -511,7 +534,7 @@ void setup()
     if(!doOta)
     {
         psychicServer = new PsychicHttpServer;
-        psychicServer->config.max_uri_handlers = 40;
+        psychicServer->config.max_uri_handlers = 10;
         psychicServer->config.stack_size = HTTPD_TASK_SIZE;
         psychicServer->listen(80);
         webCfgServer = new WebCfgServer(network, preferences, network->networkDeviceType() == NetworkDeviceType::WiFi, partitionType, psychicServer);
@@ -607,7 +630,7 @@ void setup()
     if(!doOta && !disableNetwork && (forceEnableWebServer || preferences->getBool(preference_webserver_enabled, true) || preferences->getBool(preference_webserial_enabled, false)))
     {
         psychicServer = new PsychicHttpServer;
-        psychicServer->config.max_uri_handlers = 40;
+        psychicServer->config.max_uri_handlers = 10;
         psychicServer->config.stack_size = HTTPD_TASK_SIZE;
         psychicServer->listen(80);
 

@@ -5,6 +5,7 @@
 #include "RestartReason.h"
 #include <NukiLockUtils.h>
 #include "Config.h"
+#include "hal/wdt_hal.h"
 
 NukiWrapper* nukiInst = nullptr;
 
@@ -49,7 +50,14 @@ NukiWrapper::~NukiWrapper()
 
 void NukiWrapper::initialize()
 {
-    _nukiLock.initialize();
+    _nukiLock.setDebugConnect(_preferences->getBool(preference_debug_connect, false));
+    _nukiLock.setDebugCommunication(_preferences->getBool(preference_debug_communication, false));
+    _nukiLock.setDebugReadableData(_preferences->getBool(preference_debug_readable_data, false));
+    _nukiLock.setDebugHexData(_preferences->getBool(preference_debug_hex_data, false));
+    _nukiLock.setDebugCommand(_preferences->getBool(preference_debug_command, false));
+    _nukiLock.registerLogger(Log);
+
+    _nukiLock.initialize(_preferences->getBool(preference_connect_mode, true));
     _nukiLock.registerBleScanner(_bleScanner);
     _nukiLock.setEventHandler(this);
     _nukiLock.setConnectTimeout(3);
@@ -184,6 +192,10 @@ void NukiWrapper::readSettings()
 
 void NukiWrapper::update()
 {
+    wdt_hal_context_t rtc_wdt_ctx = RWDT_HAL_CONTEXT_DEFAULT();
+    wdt_hal_write_protect_disable(&rtc_wdt_ctx);
+    wdt_hal_feed(&rtc_wdt_ctx);
+    wdt_hal_write_protect_enable(&rtc_wdt_ctx);
     if(!_paired)
     {
         Log->println(F("Nuki lock start pairing"));
@@ -4048,6 +4060,10 @@ void NukiWrapper::notify(Nuki::EventType eventType)
                     _statusUpdatedTs = espMillis();
                     _network->publishStatusUpdated(_statusUpdated);
                 }
+            }
+            else if(eventType == Nuki::EventType::ERROR_BAD_PIN)
+            {
+                _preferences->putInt(preference_lock_pin_status, 2);
             }
         }
     }

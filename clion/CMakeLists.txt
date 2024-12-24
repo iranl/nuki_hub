@@ -79,6 +79,7 @@ include_directories(
         ../lib/MqttLogger/src
         ../lib/nuki_ble/src
         ../lib/PsychicHttp/src
+        ../src
 )
 
 add_executable(dummy

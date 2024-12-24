@@ -15,13 +15,13 @@ Feel free to join us on Discord: https://discord.gg/9nPq85bP4p
 ## Supported devices
 
 <b>Supported ESP32 devices:</b>
-- Nuki Hub is compiled against all ESP32 models with Wi-Fi and Bluetooh Low Energy (BLE) which are supported by ESP-IDF 5.1.4 and Arduino Core 3.0.7.
+- Nuki Hub is compiled against all ESP32 models with Wi-Fi and Bluetooh Low Energy (BLE) which are supported by ESP-IDF 5.3.2 and Arduino Core 3.1.0.
 - Tested stable builds are provided for the ESP32, ESP32-S3 and ESP32-C3.
 - Untested builds are provided for the ESP32-Solo1.
 - Support for the ESP32-C6 and ESP32-H2 is experimental. There could be more frequent crashes than on other ESP32 devices and connections with the Nuki device could be slower than on other ESP32 devices.
 
 <b>Not supported ESP32 devices:</b>
-- The ESP32-S2 has no BLE and as such can't run Nuki Hub.
+- The ESP32-S2 and ESP32-P4 have no built-in BLE and as such can't run Nuki Hub.
 
 <b>Supported Nuki devices:</b>
 - Nuki Smart Lock 1.0
@@ -34,7 +34,7 @@ Feel free to join us on Discord: https://discord.gg/9nPq85bP4p
 - Nuki Keypad 1.0
 - Nuki Keypad 2.0
 
-<b>Untested but probably supported:</b>
+<b>Not (yet?) supported:</b>
 - Nuki Smart Lock Ultra
 
 <b>Supported Ethernet devices:</b><br>
@@ -227,6 +227,7 @@ In a browser navigate to the IP address assigned to the ESP32.
 
 - Nuki Smartlock enabled: Enable if you want Nuki Hub to connect to a Nuki Lock (1.0-4.0)
 - Nuki Opener enabled: Enable if you want Nuki Hub to connect to a Nuki Opener
+- New Nuki Bluetooth connection mode (disable if there are connection issues): Enable to use the latest Nuki BLE connection mode (recommended). Disable if you have issues communicating with the lock/opener
 
 #### Advanced Nuki Configuration
 
