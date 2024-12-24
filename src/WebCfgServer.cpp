@@ -1274,9 +1274,9 @@ esp_err_t WebCfgServer::sendSettings(PsychicRequest *request)
             continue;
         }
         if(!redacted) if(std::find(redactedPrefs.begin(), redactedPrefs.end(), key) != redactedPrefs.end())
-            {
-                continue;
-            }
+        {
+            continue;
+        }
         if(!_preferences->isKey(key))
         {
             json[key] = "";
@@ -2255,6 +2255,17 @@ bool WebCfgServer::processArgs(PsychicRequest *request, String& message)
                 configChanged = true;
             }
         }
+        else if(key == "GEMINIPIN")
+        {
+            if(_preferences->getInt(preference_lock_pairing_pin, 0) != value.toInt())
+            {
+                _preferences->putInt(preference_lock_pairing_pin, value.toInt());
+                Log->print(F("Setting changed: "));
+                Log->println(key);
+                configChanged = true;
+            }
+        }        
+        
         else if(key == "ACLLVLCHANGED")
         {
             aclLvlChanged = true;
@@ -3747,6 +3758,7 @@ esp_err_t WebCfgServer::buildAdvancedConfigHtml(PsychicRequest *request)
     printCheckBox(&response, "DBGREAD", "Enable Nuki readable data debug logging", _preferences->getBool(preference_debug_readable_data, false), "");
     printCheckBox(&response, "DBGHEX", "Enable Nuki hex data debug logging", _preferences->getBool(preference_debug_hex_data, false), "");
     printCheckBox(&response, "DBGCOMM", "Enable Nuki command debug logging", _preferences->getBool(preference_debug_command, false), "");
+    printInputField(&response, "GEMINIPIN", "SmartLock Ultra Pairing PIN", _preferences->getInt(preference_lock_pairing_pin, 0), 6, "");  
 
     response.print("</table>");
 
