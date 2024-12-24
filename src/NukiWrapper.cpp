@@ -57,7 +57,13 @@ void NukiWrapper::initialize()
     _nukiLock.setDebugCommand(_preferences->getBool(preference_debug_command, false));
     _nukiLock.registerLogger(Log);
 
+    if (_preferences->getInt(preference_lock_pairing_pin, 0) > 0)
+    {
+      _nukiLock.setPairingPin(_preferences->getInt(preference_lock_pairing_pin, 0));
+    }
+
     _nukiLock.initialize(_preferences->getBool(preference_connect_mode, true));
+    
     _nukiLock.registerBleScanner(_bleScanner);
     _nukiLock.setEventHandler(this);
     _nukiLock.setConnectTimeout(3);
