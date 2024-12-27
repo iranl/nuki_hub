@@ -17,11 +17,10 @@ Feel free to join us on Discord: https://discord.gg/9nPq85bP4p
 <b>Supported ESP32 devices:</b>
 - Nuki Hub is compiled against all ESP32 models with Wi-Fi and Bluetooh Low Energy (BLE) which are supported by ESP-IDF 5.3.2 and Arduino Core 3.1.0.
 - Tested stable builds are provided for the ESP32, ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-H2.
-- Untested builds are provided for the ESP32-Solo1 (as the developers don't own one).
+- Untested builds are provided for the ESP32-P4 and ESP32-Solo1 (as the developers don't own one).
 
 <b>Not supported ESP32 devices:</b>
 - The ESP32-S2 has no built-in BLE and as such can't run Nuki Hub.
-- We are looking into supporting the ESP32-P4 with the ESP32-C6-MINI-1 module for BLE and WiFi
 
 <b>Supported Nuki devices:</b>
 - Nuki Smart Lock 1.0
@@ -52,8 +51,8 @@ See the "[Connecting via Ethernet](#connecting-via-ethernet-optional)" section f
 
 ## Recommended ESP32 devices
 
-- If WIFI6 is absolutely required: ESP32-C6
-- If PoE is required: Any of the above mentioned devices with PoE or any other ESP device in combination with a SPI Ethernet module ([W5500](https://www.aliexpress.com/w/wholesale-w5500.html)) and [PoE to Ethernet and USB type B/C splitter](https://aliexpress.com/w/wholesale-poe-splitter-usb-c.html)
+- If WIFI6 is absolutely required: ESP32-C6 (or ESP32-P4, see note below)
+- If PoE is required: Any of the above mentioned devices with PoE or any other ESP device in combination with a SPI Ethernet module ([W5500](https://www.aliexpress.com/w/wholesale-w5500.html)) and [PoE to Ethernet and USB type B/C splitter](https://aliexpress.com/w/wholesale-poe-splitter-usb-c.html) (or ESP32-P4, see note below)
 - If you want maximum performance and intend to run any or multiple of the following:
   - a Nuki Lock and Nuki Opener and/or 
   - MQTT SSL and/or 
@@ -61,11 +60,14 @@ See the "[Connecting via Ethernet](#connecting-via-ethernet-optional)" section f
   - large amounts of keypad codes, timecontrol or authorization entries
   - Developing/debugging Nuki devices and/or Nuki Hub
 
-  An ESP32-S3 with 2MB of PSRAM or more (look for an ESP32-S3 with the designation N>=4 and R>=2 such as an ESP32-S3 N16R8)
+An ESP32-S3 with 2MB of PSRAM or more (look for an ESP32-S3 with the designation N>=4 and R>=2 such as an ESP32-S3 N16R8) (or ESP32-P4, see note below)
   
-- In general when buying a new device when size and a couple of dollars more or less are not an issue: An ESP32-S3 with 2MB of PSRAM or more.<br>
+- In general when buying a new device when size and a couple of dollars more or less are not an issue: An ESP32-S3 with 2MB of PSRAM or more (or ESP32-P4, see note below).<br>
 
 The ESP32-S3 is a dual-core CPU with many GPIO's, ability to enlarge RAM using PSRAM, ability to connect Ethernet modules over SPI and optionally power the device with a PoE splitter. The only functions missing from the ESP32-S3 as compared to other ESP devices is the ability to use some Ethernet modules only supported by the original ESP32 and the ability to connect over WIFI6 (C6)
+
+Note: The ESP32-P4 is even more powerfull than the ESP32-S3 and is probably the best, fastest and most feature rich ESP32 device available in 2025.<br>
+As the developers don't own one (yet) we can't test NukiHub on it yet and can't recommend it unreservedly as such at this time.
 
 ## Feature comparison Nuki Hub vs. Nuki Bridge
 
@@ -755,7 +757,7 @@ Now connect via Wi-Fi and change the network hardware to "Generic W5500".<br>
 
 If Ethernet hardware isn't detected or initialised properly after changing the network device, Wi-Fi will be used as a fallback.<br>
 <br>
-Note: LAN8720 modules are only supported on the ESP32 and ESP32-Solo1, not on the ESP32-S3, ESP32-C3 or ESP-C6<br>
+Note: LAN8720 modules are only supported on the ESP32, ESP32-P4 and ESP32-Solo1, not on the ESP32-S3, ESP32-C3, ESP32-C6 or ESP32-H2<br>
 
 ## Troubleshooting
 

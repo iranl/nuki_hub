@@ -4,7 +4,7 @@
 #include "../RestartReason.h"
 #include "../EspMillis.h"
 
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_private/esp_gpio_reserve.h"
 #include <bootloader_common.h>
 #include "esp_psram.h"
@@ -14,6 +14,7 @@
 extern bool ethCriticalFailure;
 extern bool wifiFallback;
 
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
 EthernetDevice::EthernetDevice(const String& hostname, Preferences* preferences, const IPConfiguration* ipConfiguration, const std::string& deviceName, uint8_t phy_addr, int power, int mdc, int mdio, eth_phy_type_t ethtype, eth_clock_mode_t clock_mode)
     : NetworkDevice(hostname, preferences, ipConfiguration),
       _deviceName(deviceName),
@@ -30,6 +31,7 @@ EthernetDevice::EthernetDevice(const String& hostname, Preferences* preferences,
     NetworkDevice::init();
 #endif
 }
+#endif
 
 EthernetDevice::EthernetDevice(const String &hostname,
                                Preferences *preferences,
@@ -90,7 +92,7 @@ void EthernetDevice::initialize()
         _hardwareInitialized = ETH.begin(_type, _phy_addr, _cs, _irq, _rst, SPI);
         ethCriticalFailure = false;
     }
-#ifdef CONFIG_IDF_TARGET_ESP32
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
     else
     {
         Log->println(F("Use RMII"));

@@ -78,7 +78,7 @@ private:
     const std::vector<std::pair<String, String>> getNetworkDetectionOptions() const;
     const std::vector<std::pair<String, String>> getGpioOptions() const;
     const std::vector<std::pair<String, String>> getNetworkCustomPHYOptions() const;
-    #if defined(CONFIG_IDF_TARGET_ESP32)
+    #if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
     const std::vector<std::pair<String, String>> getNetworkCustomCLKOptions() const;
     #endif
 
