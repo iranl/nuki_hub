@@ -7,7 +7,6 @@
 #ifndef CONFIG_IDF_TARGET_ESP32H2
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
-#include "esp_wifi_remote.h"
 #endif
 #include <esp_wifi.h>
 #include <WiFi.h>

@@ -3,7 +3,6 @@
 #include <Preferences.h>
 #if defined(CONFIG_IDF_TARGET_ESP32P4)
 #include "esp_hosted.h"
-#include "esp_wifi_remote.h"
 #endif
 #include "NetworkDevice.h"
 #include "IPConfiguration.h"
