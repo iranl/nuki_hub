@@ -74,7 +74,7 @@ std::string NetworkUtil::GetCustomEthernetDeviceName(int custPHY)
     }
 }
 
-#if defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
 eth_phy_type_t NetworkUtil::GetCustomEthernetType(int custPHY)
 {
     switch(custPHY)
@@ -108,16 +108,32 @@ eth_clock_mode_t NetworkUtil::GetCustomClock(int custCLKpref)
     switch(custCLKpref)
     {
     case 0:
+        #if defined(CONFIG_IDF_TARGET_ESP32P4)
+        return EMAC_CLK_EXT_IN;
+        #else
         return ETH_CLOCK_GPIO0_IN;
+        #endif
         break;
     case 2:
+        #if defined(CONFIG_IDF_TARGET_ESP32P4)
+        return EMAC_CLK_OUT;
+        #else
         return ETH_CLOCK_GPIO16_OUT;
+        #endif
         break;
     case 3:
+        #if defined(CONFIG_IDF_TARGET_ESP32P4)
+        return EMAC_CLK_OUT;
+        #else
         return ETH_CLOCK_GPIO17_OUT;
+        #endif
         break;
     default:
+        #if defined(CONFIG_IDF_TARGET_ESP32P4)
+        return EMAC_CLK_OUT;
+        #else
         return ETH_CLOCK_GPIO17_OUT;
+        #endif
         break;
     }
 }

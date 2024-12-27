@@ -1,6 +1,9 @@
 #pragma once
 
 #include <Preferences.h>
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+#include "esp_hosted.h"
+#endif
 #include "NetworkDevice.h"
 #include "IPConfiguration.h"
 #include "esp_wifi.h"

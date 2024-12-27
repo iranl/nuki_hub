@@ -16,6 +16,7 @@ class EthernetDevice : public NetworkDevice
 {
 
 public:
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
     EthernetDevice(const String& hostname,
                      Preferences* preferences,
                      const IPConfiguration* ipConfiguration,
@@ -26,7 +27,7 @@ public:
                      int mdio = ETH_PHY_MDIO_LAN8720,
                      eth_phy_type_t ethtype = ETH_PHY_TYPE_LAN8720,
                      eth_clock_mode_t clock_mode = ETH_CLK_MODE_LAN8720);
-
+#endif
     EthernetDevice(const String& hostname,
                      Preferences* preferences,
                      const IPConfiguration* ipConfiguration,

@@ -86,7 +86,10 @@ private:
     GpioAction IRAM_ATTR getGpioAction(const PinRole& role) const;
     static void IRAM_ATTR isrOnTimer();
 
-    #if defined(CONFIG_IDF_TARGET_ESP32C3)
+    #if defined(CONFIG_IDF_TARGET_ESP32P4)
+    //Based on https://docs.espressif.com/projects/esp-idf/en/stable/esp32p4/api-reference/peripherals/gpio.html
+    const std::vector<uint8_t> _availablePins = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 26, 27, 28, 29, 30, 31, 32, 33, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54 };
+    #elif defined(CONFIG_IDF_TARGET_ESP32C3)
     //Based on https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html and https://www.espressif.com/sites/default/files/documentation/esp32-c3_datasheet_en.pdf
     const std::vector<uint8_t> _availablePins = { 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 18, 19, 20, 21 };
     #elif defined(CONFIG_IDF_TARGET_ESP32S3)

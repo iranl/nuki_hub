@@ -8,6 +8,9 @@
 #include <esp_psram.h>
 #endif
 #ifndef CONFIG_IDF_TARGET_ESP32H2
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+#include "esp_hosted.h"
+#endif
 #include <esp_wifi.h>
 #include <WiFi.h>
 #endif
@@ -3431,7 +3434,7 @@ esp_err_t WebCfgServer::buildCustomNetworkConfigHtml(PsychicRequest *request)
     response.print("<table>");
     printDropDown(&response, "NWCUSTPHY", "PHY", String(_preferences->getInt(preference_network_custom_phy)), getNetworkCustomPHYOptions(), "");
     printInputField(&response, "NWCUSTADDR", "ADDR", _preferences->getInt(preference_network_custom_addr, 1), 6, "");
-#if defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
     printDropDown(&response, "NWCUSTCLK", "CLK", String(_preferences->getInt(preference_network_custom_clk, 0)), getNetworkCustomCLKOptions(), "internalopt");
     printInputField(&response, "NWCUSTPWR", "PWR", _preferences->getInt(preference_network_custom_pwr, 12), 6, "class=\"internalopt\"");
     printInputField(&response, "NWCUSTMDIO", "MDIO", _preferences->getInt(preference_network_custom_mdio), 6, "class=\"internalopt\"");
@@ -5160,7 +5163,7 @@ const std::vector<std::pair<String, String>> WebCfgServer::getNetworkCustomPHYOp
     options.push_back(std::make_pair("1", "W5500"));
     options.push_back(std::make_pair("2", "DN9051"));
     options.push_back(std::make_pair("3", "KSZ8851SNL"));
-#if defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
     options.push_back(std::make_pair("4", "LAN8720"));
     options.push_back(std::make_pair("5", "RTL8201"));
     options.push_back(std::make_pair("6", "TLK110"));
@@ -5171,7 +5174,7 @@ const std::vector<std::pair<String, String>> WebCfgServer::getNetworkCustomPHYOp
 
     return options;
 }
-#if defined(CONFIG_IDF_TARGET_ESP32)
+#if defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32P4)
 const std::vector<std::pair<String, String>> WebCfgServer::getNetworkCustomCLKOptions() const
 {
     std::vector<std::pair<String, String>> options;
