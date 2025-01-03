@@ -2,10 +2,10 @@
 
 #include "sdkconfig.h"
 
-#define NUKI_HUB_VERSION "9.06"
-#define NUKI_HUB_VERSION_INT (uint32_t)906
+#define NUKI_HUB_VERSION "9.07"
+#define NUKI_HUB_VERSION_INT (uint32_t)907
 #define NUKI_HUB_BUILD "unknownbuildnr"
-#define NUKI_HUB_DATE "2024-12-29"
+#define NUKI_HUB_DATE "2025-01-02"
 
 #define GITHUB_LATEST_RELEASE_URL (char*)"https://github.com/technyon/nuki_hub/releases/latest"
 #define GITHUB_OTA_MANIFEST_URL (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/manifest.json"
@@ -52,6 +52,8 @@
 #define GITHUB_BETA_UPDATER_BINARY_URL_DBG (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/debug/beta/nuki_hub_updater_esp32s3oct.bin"
 #define GITHUB_MASTER_RELEASE_BINARY_URL_DBG (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/debug/master/nuki_hub_esp32s3oct.bin"
 #define GITHUB_MASTER_UPDATER_BINARY_URL_DBG (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/debug/master/nuki_hub_updater_esp32s3oct.bin"
+#define GITHUB_LATEST_RELEASE_BINARY_URL_OTHER (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/nuki_hub_esp32s3.bin"
+#define GITHUB_LATEST_UPDATER_BINARY_URL_OTHER (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/nuki_hub_updater_esp32s3.bin"
 #define NUKI_HUB_HW (char*)"ESP32-S3 (Octal PSRAM)"
 #else
 #define GITHUB_LATEST_RELEASE_BINARY_URL (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/nuki_hub_esp32s3.bin"
@@ -66,6 +68,8 @@
 #define GITHUB_BETA_UPDATER_BINARY_URL_DBG (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/debug/beta/nuki_hub_updater_esp32s3.bin"
 #define GITHUB_MASTER_RELEASE_BINARY_URL_DBG (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/debug/master/nuki_hub_esp32s3.bin"
 #define GITHUB_MASTER_UPDATER_BINARY_URL_DBG (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/debug/master/nuki_hub_updater_esp32s3.bin"
+#define GITHUB_LATEST_RELEASE_BINARY_URL_OTHER (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/nuki_hub_esp32s3oct.bin"
+#define GITHUB_LATEST_UPDATER_BINARY_URL_OTHER (char*)"https://raw.githubusercontent.com/technyon/nuki_hub/binary/ota/nuki_hub_updater_esp32s3oct.bin"
 #define NUKI_HUB_HW (char*)"ESP32-S3"
 #endif
 #elif defined(CONFIG_IDF_TARGET_ESP32C6)
