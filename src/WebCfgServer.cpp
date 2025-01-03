@@ -10,10 +10,6 @@
 #include "SPIFFS.h"
 #endif
 #ifndef CONFIG_IDF_TARGET_ESP32H2
-#if defined(CONFIG_IDF_TARGET_ESP32P4)
-#include "esp_hosted.h"
-#endif
-#include <esp_wifi.h>
 #include <WiFi.h>
 #endif
 #include <Update.h>
