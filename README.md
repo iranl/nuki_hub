@@ -65,6 +65,9 @@ Other considerations:
 Note: The ESP32-P4 is even more powerfull than the ESP32-S3 and is probably the best, fastest and most feature rich ESP32 device available in 2025.<br>
 As the developers don't own one (yet) we can't test NukiHub on it yet and can't recommend it unreservedly as such at this time.
 
+Note: The ESP32-P4 is even more powerfull than the ESP32-S3 and is probably the best, fastest and most feature rich ESP32 device available in 2025.<br>
+As the developers don't own one (yet) we can't test NukiHub on it yet and can't recommend it unreservedly as such at this time.
+
 ## Feature comparison Nuki Hub vs. Nuki Bridge
 
 Devices ranked best-to-worst:
