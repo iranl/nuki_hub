@@ -1,0 +1,86 @@
+name: NukiHub
+on:
+  push:
+    branches: ["*"]
+    tags: ["*"]
+  pull_request:
+    branches: ["*"]
+    tags: ["*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.board }} (${{ matrix.build }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board: [esp32, esp32-s3, esp32-s3-oct, esp32-c3, esp32-c6, esp32-h2, esp32-solo1, esp32-gl-s10, esp32-p4]
+        build: [release]
+    env:
+      BOARD: ${{ matrix.board }}
+      VARIANT: ${{ matrix.name || matrix.board }}
+      BUILD: ${{ matrix.build }}
+    steps:
+      - name: Fix variant name
+        run: |
+          # remove dash character
+          export VARIANT=${VARIANT//-/}
+          echo "VARIANT=${VARIANT}" | tee -a ${GITHUB_ENV}
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio/.cache
+            ~/.platformio/packages
+          key: ${{ runner.os }}-pio-${{ matrix.board }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: make deps
+      - name: Add version info
+        env:
+          Version: ${{ github.run_id }}.${{ github.run_number }}.${{ github.run_attempt }}
+        run: |
+          sed -i "s/unknownbuildnr/$Version/g" src/Config.h
+      - name: Build ${{ matrix.build }} PlatformIO Project ${{ matrix.board }}
+        run: |
+          ORIGBOARD="${BOARD}"
+          if [ "$BUILD" = "debug" ]; then
+            BOARD="${BOARD}_dbg"
+          fi
+          echo "::group::Building with PlatformIO"
+            make updater_${ORIGBOARD}
+            make $BOARD
+          echo "::endgroup::"
+      - name: Add flash script
+        env:
+          DOC: resources/how-to-flash.txt
+          FILES: ${{ format('{0}/{1}', env.BUILD, env.VARIANT) }}
+        run: |
+          BOARD=`echo $BOARD | tr '[:lower:]' '[:upper:]'`
+
+          # look for documentation on flash and copy the command
+          command=`sed -n '/^Howto flash (esptool)$/,$p' ${DOC} | sed -n '/^## '"${BOARD}"'$/,\${ n; n; p; }' | head -n1`
+
+          if [ -z "$command" ]; then
+            echo "::error::Command not found in document ${DOC} for board ${BOARD}"
+            exit 1
+          fi
+
+          echo -n "Command: "
+          echo "$command" | tee ${FILES}/flash.sh
+          chmod a+x ${FILES}/flash.sh
+
+      - name: Upload Artifact ${{ matrix.board }}-${{ matrix.build }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ format('{0}-{1}-assets', env.VARIANT, matrix.build) }}
+          path: ${{ matrix.build }}/${{ env.VARIANT }}

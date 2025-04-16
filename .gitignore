@@ -1,0 +1,31 @@
+.dummy
+.idea
+build
+debug
+release
+cmake-build-debug
+cmake-build-release
+cmake-build-release-s3
+bin/*
+ota/*.bin
+webflash/*.bin
+.pio
+.vscode
+.project
+managed_components
+dependencies.lock
+sdkconfig.esp32*
+sdkconfig.updater_esp32*
+updater/src/*.cpp
+updater/src/*.h
+updater/src/networkDevices/*.cpp
+updater/src/networkDevices/*.h
+# Python venv
+/pyvenv.cfg
+/lib64
+/lib/python3*
+sdkconfig
+# NodeJS en pnpm
+.pnpm
+node_modules
+pnpm-lock.yaml
