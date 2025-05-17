@@ -2,19 +2,18 @@ dependencies:
   # Required IDF version
   idf: ">=5.2"
 
-  esp-nimble-cpp:
-    git: https://github.com/h2zero/esp-nimble-cpp.git
-    version: da9450dbdb60b56bca15f431e137c912b11114bb
+  #esp-nimble-cpp:
+  #  git: https://github.com/h2zero/esp-nimble-cpp.git
+  #  version: da9450dbdb60b56bca15f431e137c912b11114bb
     
   espressif/libsodium: "^1.0.20~2"
 
   espressif/esp_hosted:
-    version: "*"
+    version: "~2"
     rules:
       - if: "target in [esp32p4]"
-
   espressif/esp_wifi_remote:
-    version: "*"
+    version: "~0.9.2"
     rules:
       - if: "target in [esp32p4]"
 
