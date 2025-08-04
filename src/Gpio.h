@@ -59,7 +59,7 @@ public:
     Gpio(Preferences* preferences);
     static void init();
 
-    void addCallback(std::function<void(const GpioAction&, const int&)> callback);
+    void addCallback(std::function<void(const GpioAction&, const int&, const bool&)> callback);
 
     void loadPinConfiguration();
     void savePinConfiguration(const std::vector<PinEntry>& pinConfiguration);
@@ -79,7 +79,7 @@ public:
     void setPins();
 
 private:
-    void IRAM_ATTR notify(const GpioAction& action, const int& pin);
+    void IRAM_ATTR notify(const GpioAction& action, const int& pin, const bool& triggered);
     void IRAM_ATTR onTimer();
     bool IRAM_ATTR isTriggered(const PinEntry& pinEntry);
     GpioAction IRAM_ATTR getGpioAction(const PinRole& role) const;
@@ -134,7 +134,7 @@ private:
 
     std::vector<PinEntry> _pinConfiguration;
 
-    std::vector<std::function<void(const GpioAction&, const int&)>> _callbacks;
+    std::vector<std::function<void(const GpioAction&, const int&, const bool&)>> _callbacks;
 
     static Gpio* _inst;
 

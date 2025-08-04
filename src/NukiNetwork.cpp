@@ -219,9 +219,9 @@ void NukiNetwork::initialize()
     readSettings();
     setMQTTConnectionSettings();    
     
-    _gpio->addCallback([this](const GpioAction& action, const int& pin)
+    _gpio->addCallback([this](const GpioAction& action, const int& pin, const bool& triggered)
     {
-        gpioActionCallback(action, pin);
+        gpioActionCallback(action, pin, triggered);
     });
 
     if(!disableNetwork)
@@ -261,29 +261,40 @@ void NukiNetwork::initialize()
         {
             switch (pinEntry.role)
             {
-            case PinRole::GeneralInputPullDown:
-            case PinRole::GeneralInputPullUp:
-                if(rebGpio)
-                {
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
-                    publishString(_lockPath.c_str(), gpioPath, "input", false);
+                case PinRole::InputLock:
+                case PinRole::InputUnlock:
+                case PinRole::InputUnlatch:
+                case PinRole::InputLockNgo:
+                case PinRole::InputLockNgoUnlatch:
+                case PinRole::InputElectricStrikeActuation:
+                case PinRole::InputActivateRTO:
+                case PinRole::InputActivateCM:
+                case PinRole::InputDeactivateRtoCm:
+                case PinRole::InputDeactivateRTO:
+                case PinRole::InputDeactivateCM:                
+                case PinRole::GeneralInputPullDown:
+                case PinRole::GeneralInputPullUp:
+                    if(rebGpio)
+                    {
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
+                        publishString(_lockPath.c_str(), gpioPath, "input", false);
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
+                        publishString(_lockPath.c_str(), gpioPath, std::to_string(digitalRead(pinEntry.pin)).c_str(), _retainGpio);
+                    }
+                    break;
+                case PinRole::GeneralOutput:
+                    if(rebGpio)
+                    {
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
+                        publishString(_lockPath.c_str(), gpioPath, "output", false);
+                        buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
+                        publishString(_lockPath.c_str(), gpioPath, "0", false);
+                    }
                     buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                    publishString(_lockPath.c_str(), gpioPath, std::to_string(digitalRead(pinEntry.pin)).c_str(), _retainGpio);
-                }
-                break;
-            case PinRole::GeneralOutput:
-                if(rebGpio)
-                {
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_role});
-                    publishString(_lockPath.c_str(), gpioPath, "output", false);
-                    buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                    publishString(_lockPath.c_str(), gpioPath, "0", false);
-                }
-                buildMqttPath(gpioPath, {mqtt_topic_gpio_prefix, (mqtt_topic_gpio_pin + std::to_string(pinEntry.pin)).c_str(), mqtt_topic_gpio_state});
-                subscribe(_lockPath.c_str(), gpioPath);
-                break;
-            default:
-                break;
+                    subscribe(_lockPath.c_str(), gpioPath);
+                    break;
+                default:
+                    break;
             }
         }
     }
@@ -1386,7 +1397,7 @@ void NukiNetwork::parseGpioTopics(const espMqttClientTypes::MessageProperties &p
     }
 }
 
-void NukiNetwork::gpioActionCallback(const GpioAction &action, const int &pin)
+void NukiNetwork::gpioActionCallback(const GpioAction &action, const int &pin, const bool &triggered)
 {
     _gpioTs[pin] = espMillis();
 }

@@ -58,7 +58,7 @@ private:
     static void onKeypadJsonCommandReceivedCallback(const char* value);
     static void onTimeControlCommandReceivedCallback(const char* value);
     static void onAuthCommandReceivedCallback(const char* value);
-    static void gpioActionCallback(const GpioAction& action, const int& pin);
+    static void gpioActionCallback(const GpioAction& action, const int& pin, const bool &triggered);
     LockActionResult onLockActionReceived(const char* value);
     void onKeypadCommandReceived(const char* command, const uint& id, const String& name, const String& code, const int& enabled);
     void onOfficialUpdateReceived(const char* topic, const char* value);
@@ -66,7 +66,7 @@ private:
     void onKeypadJsonCommandReceived(const char* value);
     void onTimeControlCommandReceived(const char* value);
     void onAuthCommandReceived(const char* value);
-    void onGpioActionReceived(const GpioAction& action, const int& pin);
+    void onGpioActionReceived(const GpioAction& action, const int& pin, const bool &triggered);
 
     bool updateKeyTurnerState();
     void updateBatteryState();

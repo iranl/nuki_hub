@@ -2494,28 +2494,36 @@ void NukiOpenerWrapper::onAuthCommandReceivedCallback(const char *value)
     nukiOpenerInst->onAuthCommandReceived(value);
 }
 
-void NukiOpenerWrapper::gpioActionCallback(const GpioAction &action, const int& pin)
+void NukiOpenerWrapper::gpioActionCallback(const GpioAction &action, const int& pin, const bool &triggered)
 {
-    switch(action)
+    nukiOpenerInst->onGpioActionReceived(action, pin, triggered);
+}
+
+void NukiOpenerWrapper::onGpioActionReceived(const GpioAction &action, const int &pin, const bool &triggered)
+{
+    if (triggered)
     {
-    case GpioAction::ElectricStrikeActuation:
-        nukiOpenerInst->electricStrikeActuation();
-        break;
-    case GpioAction::ActivateRTO:
-        nukiOpenerInst->activateRTO();
-        break;
-    case GpioAction::ActivateCM:
-        nukiOpenerInst->activateCM();
-        break;
-    case GpioAction::DeactivateRtoCm:
-        nukiOpenerInst->deactivateRtoCm();
-        break;
-    case GpioAction::DeactivateRTO:
-        nukiOpenerInst->deactivateRTO();
-        break;
-    case GpioAction::DeactivateCM:
-        nukiOpenerInst->deactivateCM();
-        break;
+        switch(action)
+        {
+            case GpioAction::ElectricStrikeActuation:
+                nukiOpenerInst->electricStrikeActuation();
+                break;
+            case GpioAction::ActivateRTO:
+                nukiOpenerInst->activateRTO();
+                break;
+            case GpioAction::ActivateCM:
+                nukiOpenerInst->activateCM();
+                break;
+            case GpioAction::DeactivateRtoCm:
+                nukiOpenerInst->deactivateRtoCm();
+                break;
+            case GpioAction::DeactivateRTO:
+                nukiOpenerInst->deactivateRTO();
+                break;
+            case GpioAction::DeactivateCM:
+                nukiOpenerInst->deactivateCM();
+                break;
+        }
     }
 }
 

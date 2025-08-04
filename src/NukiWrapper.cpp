@@ -2696,75 +2696,78 @@ void NukiWrapper::onAuthCommandReceivedCallback(const char *value)
 }
 
 
-void NukiWrapper::gpioActionCallback(const GpioAction &action, const int& pin)
+void NukiWrapper::gpioActionCallback(const GpioAction &action, const int& pin, const bool &triggered)
 {
-    nukiInst->onGpioActionReceived(action, pin);
+    nukiInst->onGpioActionReceived(action, pin, triggered);
 }
 
-void NukiWrapper::onGpioActionReceived(const GpioAction &action, const int &pin)
+void NukiWrapper::onGpioActionReceived(const GpioAction &action, const int &pin, const bool &triggered)
 {
-    switch(action)
+    if (triggered)
     {
-    case GpioAction::Lock:
-        if(!_nukiOfficial->getOffConnected())
+        switch(action)
         {
-            nukiInst->lock();
+            case GpioAction::Lock:
+                if(!_nukiOfficial->getOffConnected())
+                {
+                    nukiInst->lock();
+                }
+                else
+                {
+                    _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
+                    _offCommand = NukiLock::LockAction::Lock;
+                    _network->publishOffAction(2);
+                }
+                break;
+            case GpioAction::Unlock:
+                if(!_nukiOfficial->getOffConnected())
+                {
+                    nukiInst->unlock();
+                }
+                else
+                {
+                    _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
+                    _offCommand = NukiLock::LockAction::Unlock;
+                    _network->publishOffAction(1);
+                }
+                break;
+            case GpioAction::Unlatch:
+                if(!_nukiOfficial->getOffConnected())
+                {
+                    nukiInst->unlatch();
+                }
+                else
+                {
+                    _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
+                    _offCommand = NukiLock::LockAction::Unlatch;
+                    _network->publishOffAction(3);
+                }
+                break;
+            case GpioAction::LockNgo:
+                if(!_nukiOfficial->getOffConnected())
+                {
+                    nukiInst->lockngo();
+                }
+                else
+                {
+                    _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
+                    _offCommand = NukiLock::LockAction::LockNgo;
+                    _network->publishOffAction(4);
+                }
+                break;
+            case GpioAction::LockNgoUnlatch:
+                if(!_nukiOfficial->getOffConnected())
+                {
+                    nukiInst->lockngounlatch();
+                }
+                else
+                {
+                    _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
+                    _offCommand = NukiLock::LockAction::LockNgoUnlatch;
+                    _network->publishOffAction(5);
+                }
+                break;
         }
-        else
-        {
-            _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
-            _offCommand = NukiLock::LockAction::Lock;
-            _network->publishOffAction(2);
-        }
-        break;
-    case GpioAction::Unlock:
-        if(!_nukiOfficial->getOffConnected())
-        {
-            nukiInst->unlock();
-        }
-        else
-        {
-            _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
-            _offCommand = NukiLock::LockAction::Unlock;
-            _network->publishOffAction(1);
-        }
-        break;
-    case GpioAction::Unlatch:
-        if(!_nukiOfficial->getOffConnected())
-        {
-            nukiInst->unlatch();
-        }
-        else
-        {
-            _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
-            _offCommand = NukiLock::LockAction::Unlatch;
-            _network->publishOffAction(3);
-        }
-        break;
-    case GpioAction::LockNgo:
-        if(!_nukiOfficial->getOffConnected())
-        {
-            nukiInst->lockngo();
-        }
-        else
-        {
-            _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
-            _offCommand = NukiLock::LockAction::LockNgo;
-            _network->publishOffAction(4);
-        }
-        break;
-    case GpioAction::LockNgoUnlatch:
-        if(!_nukiOfficial->getOffConnected())
-        {
-            nukiInst->lockngounlatch();
-        }
-        else
-        {
-            _nukiOfficial->setOffCommandExecutedTs(espMillis() + 2000);
-            _offCommand = NukiLock::LockAction::LockNgoUnlatch;
-            _network->publishOffAction(5);
-        }
-        break;
     }
 }
 

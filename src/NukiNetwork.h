@@ -122,7 +122,7 @@ private:
     void onMqttConnect(const bool& sessionPresent);
     void onMqttDisconnect(const espMqttClientTypes::DisconnectReason& reason);
     void parseGpioTopics(const espMqttClientTypes::MessageProperties& properties, const char* topic, const uint8_t* payload, size_t& len, size_t& index, size_t& total);
-    void gpioActionCallback(const GpioAction& action, const int& pin);
+    void gpioActionCallback(const GpioAction& action, const int& pin, const bool &triggered);
     bool comparePrefixedPath(const char* fullPath, const char* subPath);
     void buildMqttPath(const char *path, char *outPath);
     void buildMqttPath(char* outPath, std::initializer_list<const char*> paths);
